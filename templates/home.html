@@ -1,0 +1,39 @@
+{% extends "base.html" %}
+{% block content %}
+<h2>Welcome to the ERP System</h2>
+<div class="container">
+    <div class="row">
+        <!-- Clients Box -->
+        <div class="col-md-3">
+            <a href="{{ url_for('clients') }}" class="btn btn-primary btn-block box-button">
+                <h4>Clients</h4>
+                <p>Manage your clients here.</p>
+            </a>
+        </div>
+
+        <!-- Products Box -->
+        <div class="col-md-3">
+            <a href="{{ url_for('products') }}" class="btn btn-success btn-block box-button">
+                <h4>Products</h4>
+                <p>Manage your products here.</p>
+            </a>
+        </div>
+
+        <!-- Invoices Box -->
+        <div class="col-md-3">
+            <a href="{{ url_for('invoices') }}" class="btn btn-warning btn-block box-button">
+                <h4>Invoices</h4>
+                <p>Manage your invoices here.</p>
+            </a>
+        </div>
+
+        <!-- Cash Flow Tracker Box -->
+        <div class="col-md-3">
+            <a href="{{ url_for('cash_flow') }}" class="btn btn-info btn-block box-button">
+                <h4>Cash Flow Tracker</h4>
+                <p>Track your cash flow here.</p>
+            </a>
+        </div>
+    </div>
+</div>
+{% endblock %}

@@ -1,0 +1,51 @@
+{% extends "base.html" %}
+{% block content %}
+<h2>Clients</h2>
+
+<!-- Create Client Form -->
+<h3>Create Client</h3>
+<form method="POST" action="{{ url_for('create_client') }}">
+    <div class="mb-3">
+        <label for="client-name" class="form-label">Name</label>
+        <input type="text" class="form-control" id="client-name" name="name" required>
+    </div>
+    <div class="mb-3">
+        <label for="client-email" class="form-label">Email</label>
+        <input type="email" class="form-control" id="client-email" name="email" required>
+    </div>
+    <div class="mb-3">
+        <label for="client-tax-id" class="form-label">Tax ID</label>
+        <input type="text" class="form-control" id="client-tax-id" name="tax_id">
+    </div>
+    <div class="mb-3">
+        <label for="client-payment-terms" class="form-label">Payment Terms</label>
+        <input type="text" class="form-control" id="client-payment-terms" name="payment_terms">
+    </div>
+    <button type="submit" class="btn btn-primary">Create Client</button>
+</form>
+
+<!-- Clients Table -->
+<h3>Clients</h3>
+<table class="table">
+    <thead>
+        <tr>
+            <th>ID</th>
+            <th>Name</th>
+            <th>Email</th>
+            <th>Tax ID</th>
+            <th>Payment Terms</th>
+        </tr>
+    </thead>
+    <tbody>
+        {% for client in clients %}
+        <tr>
+            <td>{{ client.id }}</td>
+            <td>{{ client.name }}</td>
+            <td>{{ client.email }}</td>
+            <td>{{ client.tax_id or 'N/A' }}</td>
+            <td>{{ client.payment_terms or 'N/A' }}</td>
+        </tr>
+        {% endfor %}
+    </tbody>
+</table>
+{% endblock %}
