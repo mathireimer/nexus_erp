@@ -1,0 +1,75 @@
+{% extends "base.html" %}
+{% block content %}
+<h2>Cash Flow Tracker</h2>
+
+<!-- Chart View -->
+<canvas id="cashFlowChart" width="400" height="200"></canvas>
+<script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+<script>
+    fetch('/api/transactions?start=2025-04-01&end=2025-04-30&type=ALL')
+        .then(response => response.json())
+        .then(data => {
+            const labels = data.transactions.map(t => t.date);
+            const incomeData = data.transactions.filter(t => t.type === 'INCOME').map(t => t.amount);
+            const expenseData = data.transactions.filter(t => t.type === 'EXPENSE').map(t => t.amount);
+
+            const ctx = document.getElementById('cashFlowChart').getContext('2d');
+            const cashFlowChart = new Chart(ctx, {
+                type: 'line',
+                data: {
+                    labels: labels,
+                    datasets: [{
+                        label: 'Income',
+                        data: incomeData,
+                        borderColor: 'green',
+                        fill: false
+                    }, {
+                        label: 'Expenses',
+                        data: expenseData,
+                        borderColor: 'red',
+                        fill: false
+                    }]
+                },
+                options: {
+                    responsive: true,
+                    plugins: {
+                        legend: {
+                            position: 'top',
+                        },
+                        title: {
+                            display: true,
+                            text: 'Cash Flow Overview'
+                        }
+                    }
+                }
+            });
+        });
+</script>
+
+<!-- Transaction List View -->
+<h3>Transactions</h3>
+<table class="table">
+    <thead>
+        <tr>
+            <th>Date</th>
+            <th>Category</th>
+            <th>Type</th>
+            <th>Description</th>
+            <th>Amount</th>
+            <th>Status</th>
+        </tr>
+    </thead>
+    <tbody>
+        {% for transaction in transactions %}
+        <tr>
+            <td>{{ transaction.date }}</td>
+            <td>{{ transaction.category }}</td>
+            <td>{{ transaction.type }}</td>
+            <td>{{ transaction.description }}</td>
+            <td>{{ transaction.amount }}</td>
+            <td>{{ transaction.status }}</td>
+        </tr>
+        {% endfor %}
+    </tbody>
+</table>
+{% endblock %}
