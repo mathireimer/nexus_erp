@@ -1,0 +1,124 @@
+{% extends "base.html" %}
+
+{% block content %}
+<div class="container">
+    <div class="row mb-4">
+        <div class="col">
+            <h1>Vendors</h1>
+        </div>
+        <div class="col text-end">
+            <button type="button" class="btn btn-primary" data-bs-toggle="modal" data-bs-target="#addVendorModal">
+                Add New Vendor
+            </button>
+        </div>
+    </div>
+
+    <div class="table-responsive">
+        <table class="table table-striped table-hover">
+            <thead class="table-light">
+                <tr>
+                    <th>Name</th>
+                    <th>Email</th>
+                    <th>Tax ID</th>
+                    <th>Payment Terms</th>
+                    <th>Actions</th>
+                </tr>
+            </thead>
+            <tbody>
+                {% for vendor in vendors %}
+                <tr>
+                    <td>{{ vendor.name }}</td>
+                    <td>{{ vendor.email }}</td>
+                    <td>{{ vendor.tax_id }}</td>
+                    <td>{{ vendor.payment_terms }}</td>
+                    <td>
+                        <div class="btn-group" role="group">
+                            <button type="button" class="btn btn-sm btn-outline-primary" data-bs-toggle="modal" data-bs-target="#editVendorModal{{ vendor.id }}">
+                                Edit
+                            </button>
+                            <button type="button" class="btn btn-sm btn-outline-danger" onclick="if(confirm('Are you sure you want to delete this vendor?')) window.location.href='{{ url_for('delete_vendor', vendor_id=vendor.id) }}'">
+                                Delete
+                            </button>
+                        </div>
+                    </td>
+                </tr>
+                {% endfor %}
+            </tbody>
+        </table>
+    </div>
+</div>
+
+<!-- Add Vendor Modal -->
+<div class="modal fade" id="addVendorModal" tabindex="-1" aria-labelledby="addVendorModalLabel" aria-hidden="true">
+    <div class="modal-dialog">
+        <div class="modal-content">
+            <div class="modal-header">
+                <h5 class="modal-title" id="addVendorModalLabel">Add New Vendor</h5>
+                <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
+            </div>
+            <form action="{{ url_for('create_vendor') }}" method="POST">
+                <div class="modal-body">
+                    <div class="mb-3">
+                        <label for="name" class="form-label">Name</label>
+                        <input type="text" class="form-control" id="name" name="name" required>
+                    </div>
+                    <div class="mb-3">
+                        <label for="email" class="form-label">Email</label>
+                        <input type="email" class="form-control" id="email" name="email" required>
+                    </div>
+                    <div class="mb-3">
+                        <label for="tax_id" class="form-label">Tax ID</label>
+                        <input type="text" class="form-control" id="tax_id" name="tax_id">
+                    </div>
+                    <div class="mb-3">
+                        <label for="payment_terms" class="form-label">Payment Terms</label>
+                        <input type="text" class="form-control" id="payment_terms" name="payment_terms">
+                    </div>
+                </div>
+                <div class="modal-footer">
+                    <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Close</button>
+                    <button type="submit" class="btn btn-primary">Add Vendor</button>
+                </div>
+            </form>
+        </div>
+    </div>
+</div>
+
+<!-- Edit Vendor Modals -->
+{% for vendor in vendors %}
+<div class="modal fade" id="editVendorModal{{ vendor.id }}" tabindex="-1" aria-labelledby="editVendorModalLabel{{ vendor.id }}" aria-hidden="true">
+    <div class="modal-dialog">
+        <div class="modal-content">
+            <div class="modal-header">
+                <h5 class="modal-title" id="editVendorModalLabel{{ vendor.id }}">Edit Vendor</h5>
+                <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
+            </div>
+            <form action="{{ url_for('edit_vendor', vendor_id=vendor.id) }}" method="POST">
+                <div class="modal-body">
+                    <div class="mb-3">
+                        <label for="name{{ vendor.id }}" class="form-label">Name</label>
+                        <input type="text" class="form-control" id="name{{ vendor.id }}" name="name" value="{{ vendor.name }}" required>
+                    </div>
+                    <div class="mb-3">
+                        <label for="email{{ vendor.id }}" class="form-label">Email</label>
+                        <input type="email" class="form-control" id="email{{ vendor.id }}" name="email" value="{{ vendor.email }}" required>
+                    </div>
+                    <div class="mb-3">
+                        <label for="tax_id{{ vendor.id }}" class="form-label">Tax ID</label>
+                        <input type="text" class="form-control" id="tax_id{{ vendor.id }}" name="tax_id" value="{{ vendor.tax_id }}">
+                    </div>
+                    <div class="mb-3">
+                        <label for="payment_terms{{ vendor.id }}" class="form-label">Payment Terms</label>
+                        <input type="text" class="form-control" id="payment_terms{{ vendor.id }}" name="payment_terms" value="{{ vendor.payment_terms }}">
+                    </div>
+                </div>
+                <div class="modal-footer">
+                    <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Close</button>
+                    <button type="submit" class="btn btn-primary">Save Changes</button>
+                </div>
+            </form>
+        </div>
+    </div>
+</div>
+{% endfor %}
+{% endblock %}
