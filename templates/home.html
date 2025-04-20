@@ -1,46 +1,154 @@
 {% extends "base.html" %}
+{% block title %}Dashboard{% endblock %}
 {% block content %}
-<h2>Welcome to the ERP System</h2>
-<div class="container">
+<div class="container-fluid">
+    <div class="row mb-4">
+        <div class="col-12">
+            <h2 class="mb-4">Dashboard</h2>
+        </div>
+    </div>
+
+    <!-- Statistics Cards -->
+    <div class="row mb-4">
+        <div class="col-md-3">
+            <div class="card">
+                <div class="card-body">
+                    <div class="d-flex justify-content-between align-items-center">
+                        <div>
+                            <h6 class="text-muted mb-2">Total Clients</h6>
+                            <h3 class="mb-0">{{ clients|length }}</h3>
+                        </div>
+                        <div class="bg-primary bg-opacity-10 p-3 rounded">
+                            <i class="fas fa-users text-primary"></i>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+        <div class="col-md-3">
+            <div class="card">
+                <div class="card-body">
+                    <div class="d-flex justify-content-between align-items-center">
+                        <div>
+                            <h6 class="text-muted mb-2">Total Vendors</h6>
+                            <h3 class="mb-0">{{ vendors|length }}</h3>
+                        </div>
+                        <div class="bg-success bg-opacity-10 p-3 rounded">
+                            <i class="fas fa-truck text-success"></i>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+        <div class="col-md-3">
+            <div class="card">
+                <div class="card-body">
+                    <div class="d-flex justify-content-between align-items-center">
+                        <div>
+                            <h6 class="text-muted mb-2">Active Invoices</h6>
+                            <h3 class="mb-0">{{ active_invoices|length }}</h3>
+                        </div>
+                        <div class="bg-warning bg-opacity-10 p-3 rounded">
+                            <i class="fas fa-file-invoice text-warning"></i>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+        <div class="col-md-3">
+            <div class="card">
+                <div class="card-body">
+                    <div class="d-flex justify-content-between align-items-center">
+                        <div>
+                            <h6 class="text-muted mb-2">Total Products</h6>
+                            <h3 class="mb-0">{{ products|length }}</h3>
+                        </div>
+                        <div class="bg-info bg-opacity-10 p-3 rounded">
+                            <i class="fas fa-box text-info"></i>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- Quick Access Cards -->
     <div class="row">
-        <!-- Clients Box -->
-        <div class="col-md-3">
-            <a href="{{ url_for('clients') }}" class="btn btn-primary btn-block box-button">
+        <div class="col-md-3 mb-4">
+            <a href="{{ url_for('clients') }}" class="box-button">
+                <i class="fas fa-users text-primary"></i>
                 <h4>Clients</h4>
-                <p>Manage your clients here.</p>
+                <p>Manage your clients here</p>
             </a>
         </div>
-
-        <!-- Vendors Box -->
-        <div class="col-md-3">
-            <a href="{{ url_for('vendors') }}" class="btn btn-secondary btn-block box-button">
+        <div class="col-md-3 mb-4">
+            <a href="{{ url_for('vendors') }}" class="box-button">
+                <i class="fas fa-truck text-success"></i>
                 <h4>Vendors</h4>
-                <p>Manage your vendors here.</p>
+                <p>Manage your vendors here</p>
             </a>
         </div>
-
-        <!-- Products Box -->
-        <div class="col-md-3">
-            <a href="{{ url_for('products') }}" class="btn btn-success btn-block box-button">
+        <div class="col-md-3 mb-4">
+            <a href="{{ url_for('products') }}" class="box-button">
+                <i class="fas fa-box text-info"></i>
                 <h4>Products</h4>
-                <p>Manage your products here.</p>
+                <p>Manage your products here</p>
             </a>
         </div>
-
-        <!-- Invoices Box -->
-        <div class="col-md-3">
-            <a href="{{ url_for('invoices') }}" class="btn btn-warning btn-block box-button">
+        <div class="col-md-3 mb-4">
+            <a href="{{ url_for('invoices') }}" class="box-button">
+                <i class="fas fa-file-invoice text-warning"></i>
                 <h4>Invoices</h4>
-                <p>Manage your invoices here.</p>
+                <p>Manage your invoices here</p>
             </a>
         </div>
-
-        <!-- Cash Flow Tracker Box -->
-        <div class="col-md-3">
-            <a href="{{ url_for('cash_flow') }}" class="btn btn-info btn-block box-button">
-                <h4>Cash Flow Tracker</h4>
-                <p>Track your cash flow here.</p>
+        <div class="col-md-3 mb-4">
+            <a href="{{ url_for('cash_flow') }}" class="box-button">
+                <i class="fas fa-chart-line text-danger"></i>
+                <h4>Cash Flow</h4>
+                <p>Track your cash flow here</p>
             </a>
+        </div>
+    </div>
+
+    <!-- Recent Activity -->
+    <div class="row mt-4">
+        <div class="col-12">
+            <div class="card">
+                <div class="card-header">
+                    <h5 class="mb-0">Recent Activity</h5>
+                </div>
+                <div class="card-body">
+                    <div class="table-responsive">
+                        <table class="table">
+                            <thead>
+                                <tr>
+                                    <th>Date</th>
+                                    <th>Type</th>
+                                    <th>Description</th>
+                                    <th>Amount</th>
+                                    <th>Status</th>
+                                </tr>
+                            </thead>
+                            <tbody>
+                                {% for transaction in recent_transactions %}
+                                <tr>
+                                    <td>{{ transaction.date.strftime('%Y-%m-%d') }}</td>
+                                    <td>{{ transaction.type }}</td>
+                                    <td>{{ transaction.description }}</td>
+                                    <td>{{ transaction.amount }} {{ transaction.currency }}</td>
+                                    <td>
+                                        <span class="badge bg-{{ 'success' if transaction.status == 'CONFIRMED' else 'warning' }}">
+                                            {{ transaction.status }}
+                                        </span>
+                                    </td>
+                                </tr>
+                                {% endfor %}
+                            </tbody>
+                        </table>
+                    </div>
+                </div>
+            </div>
         </div>
     </div>
 </div>

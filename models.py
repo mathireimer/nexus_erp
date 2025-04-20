@@ -99,6 +99,7 @@ class Invoice(db.Model):
     total_amount = db.Column(db.Float, nullable=False)
     currency = db.Column(db.String(3), default='PYG')
     status = db.Column(db.String(20), default='Unpaid')  # Unpaid, Paid, Partially Paid
+    created_at = db.Column(db.DateTime, default=datetime.utcnow)
 
     # Relationships
     client = db.relationship('Client', back_populates='invoices')

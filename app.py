@@ -40,7 +40,22 @@ def calculate_period_range(period):
 def home():
     if 'user_id' not in session:
         return redirect(url_for('login'))
-    return render_template('home.html')
+    
+    # Get counts for dashboard
+    clients = Client.query.all()
+    vendors = Vendor.query.all()
+    products = Product.query.all()
+    active_invoices = Invoice.query.filter_by(status='Unpaid').all()
+    
+    # Get recent transactions
+    recent_transactions = Transaction.query.order_by(Transaction.date.desc()).limit(5).all()
+    
+    return render_template('home.html',
+                         clients=clients,
+                         vendors=vendors,
+                         products=products,
+                         active_invoices=active_invoices,
+                         recent_transactions=recent_transactions)
 
 @app.route('/login', methods=['GET', 'POST'])
 def login():
