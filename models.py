@@ -33,20 +33,25 @@ class Product(db.Model):
     sku = db.Column(db.String(50), unique=True, nullable=False)
     name = db.Column(db.String(100), nullable=False)
     description = db.Column(db.Text)
-    category_id = db.Column(db.Integer, db.ForeignKey('category.id'), nullable=True)
+    category = db.Column(db.String(100), nullable=False)
+    buying_date = db.Column(db.Date, nullable=False)
     unit = db.Column(db.String(20), nullable=False, default='piece')
     purchase_price = db.Column(db.Float, nullable=False)
     sell_price = db.Column(db.Float, nullable=False)
     stock_qty = db.Column(db.Float, nullable=False, default=0)
     min_stock = db.Column(db.Float, nullable=False, default=0)
+    max_stock = db.Column(db.Float, nullable=False, default=0)
     tax_rate = db.Column(db.Float, default=0.0)
     created_at = db.Column(db.DateTime, default=datetime.utcnow)
     updated_at = db.Column(db.DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)
 
     # Relationships
-    category = db.relationship('Category', backref='products')
-    stock_movements = db.relationship('StockMovement', backref='product', lazy=True)
-    inventory_adjustments = db.relationship('InventoryAdjustment', backref='product', lazy=True)
+    stock_movements = db.relationship('StockMovement', backref='product', lazy=True, cascade='all, delete-orphan')
+    inventory_adjustments = db.relationship('InventoryAdjustment', backref='product', lazy=True, cascade='all, delete-orphan')
+    bill_items = db.relationship('BillItem', backref='product', lazy=True)
+
+    def __repr__(self):
+        return f'<Product {self.name}>'
 
 class Order(db.Model):
     id = db.Column(db.Integer, primary_key=True)
@@ -124,7 +129,7 @@ class Bill(db.Model):
     # Relationships
     client = db.relationship('Client', backref='client_bills')
     vendor = db.relationship('Vendor', backref='vendor_bills')
-    items = db.relationship('BillItem', backref='bill', cascade='all, delete-orphan')
+    items = db.relationship('BillItem', backref='parent_bill', cascade='all, delete-orphan')
     payments = db.relationship('Payment', backref='bill', cascade='all, delete-orphan')
 
     @property
@@ -146,7 +151,7 @@ class BillItem(db.Model):
     created_at = db.Column(db.DateTime, default=datetime.utcnow)
 
     # Relationships
-    product = db.relationship('Product', backref='bill_items')
+    bill = db.relationship('Bill', backref='bill_items')
 
     @property
     def subtotal(self):
@@ -203,12 +208,16 @@ class Transaction(db.Model):
 class StockMovement(db.Model):
     __tablename__ = 'stock_movements'
     id = db.Column(db.Integer, primary_key=True)
-    product_id = db.Column(db.Integer, db.ForeignKey('products.id'), nullable=False)
+    product_id = db.Column(db.Integer, db.ForeignKey('products.id', ondelete='CASCADE'), nullable=False)
     type = db.Column(db.String(20), nullable=False)  # purchase, sale, adjustment, return
     quantity = db.Column(db.Float, nullable=False)
-    source_id = db.Column(db.Integer, nullable=True)  # Invoice ID, Adjustment ID, etc.
-    source_type = db.Column(db.String(50), nullable=True)  # "invoice", "adjustment", etc.
+    source_id = db.Column(db.Integer, nullable=True)  # Bill ID, Adjustment ID, etc.
+    source_type = db.Column(db.String(50), nullable=True)  # "bill", "adjustment", etc.
     timestamp = db.Column(db.DateTime, default=datetime.utcnow)
+    notes = db.Column(db.Text)
+
+    def __repr__(self):
+        return f'<StockMovement {self.type} {self.quantity} units>'
 
 class InventoryAdjustment(db.Model):
     __tablename__ = 'inventory_adjustments'

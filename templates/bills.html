@@ -327,130 +327,258 @@
 
 {% block scripts %}
 <script>
-document.addEventListener('DOMContentLoaded', function() {
-    const itemsContainer = document.getElementById('itemsContainer');
-    const itemTemplate = document.getElementById('itemTemplate');
-    const addItemBtn = document.getElementById('addItemBtn');
-    const subtotalSpan = document.getElementById('subtotal');
-    const totalTaxSpan = document.getElementById('totalTax');
-    const totalSpan = document.getElementById('total');
+let products = [];
+let billItems = [];
 
-    // Set today's date as default for issue_date
-    document.getElementById('issue_date').valueAsDate = new Date();
-    
-    // Set default due date (30 days from today)
-    const dueDate = new Date();
-    dueDate.setDate(dueDate.getDate() + 30);
-    document.getElementById('due_date').valueAsDate = dueDate;
-
-    function addItem() {
-        const clone = document.importNode(itemTemplate.content, true);
-        itemsContainer.appendChild(clone);
-
-        // Add event listeners to the new item
-        const newItem = itemsContainer.lastElementChild;
-        setupItemListeners(newItem);
-    }
-
-    function setupItemListeners(item) {
-        const productSelect = item.querySelector('.product-select');
-        const quantityInput = item.querySelector('.quantity-input');
-        const priceInput = item.querySelector('.price-input');
-        const taxRateInput = item.querySelector('.tax-rate-input');
-        const removeBtn = item.querySelector('.remove-item');
-
-        productSelect.addEventListener('change', function() {
-            const option = this.options[this.selectedIndex];
-            if (option.dataset.price) {
-                priceInput.value = option.dataset.price;
-            }
-            calculateTotals();
-        });
-
-        [quantityInput, priceInput, taxRateInput].forEach(input => {
-            input.addEventListener('input', calculateTotals);
-        });
-
-        removeBtn.addEventListener('click', function() {
-            item.remove();
-            calculateTotals();
-        });
-    }
-
-    function calculateTotals() {
-        let subtotal = 0;
-        let totalTax = 0;
-
-        itemsContainer.querySelectorAll('.item-row').forEach(item => {
-            const quantity = parseFloat(item.querySelector('.quantity-input').value) || 0;
-            const price = parseFloat(item.querySelector('.price-input').value) || 0;
-            const taxRate = parseFloat(item.querySelector('.tax-rate-input').value) || 0;
-
-            const itemSubtotal = quantity * price;
-            const itemTax = itemSubtotal * (taxRate / 100);
-
-            subtotal += itemSubtotal;
-            totalTax += itemTax;
-        });
-
-        const total = subtotal + totalTax;
-
-        subtotalSpan.textContent = subtotal.toFixed(2);
-        totalTaxSpan.textContent = totalTax.toFixed(2);
-        totalSpan.textContent = total.toFixed(2);
-    }
-
-    addItemBtn.addEventListener('click', addItem);
-
-    // Add first item row by default
-    addItem();
-
-    // Add currency conversion functionality
-    function setupCurrencyConversion(modalId) {
-        const modal = document.getElementById(modalId);
-        if (!modal) return;
-
-        const amountInput = modal.querySelector('input[name="payment_amount"]');
-        const currencySelect = modal.querySelector('select[name="payment_currency"]');
-        const conversionInfo = document.createElement('small');
-        conversionInfo.className = 'text-muted d-block mt-2';
-        amountInput.parentNode.appendChild(conversionInfo);
-
-        async function updateConversion() {
-            const amount = parseFloat(amountInput.value) || 0;
-            const currency = currencySelect.value;
-            const billCurrency = modal.querySelector('.bill-currency').textContent.trim();
-
-            if (amount && currency !== billCurrency) {
-                try {
-                    const response = await fetch(`/api/exchange-rate?from=${currency}&to=${billCurrency}`);
-                    const data = await response.json();
-                    if (data.success) {
-                        const converted = (amount * data.rate).toFixed(2);
-                        conversionInfo.textContent = `≈ ${converted} ${billCurrency}`;
-                        conversionInfo.style.color = '#28a745';  // Success green color
-                    } else {
-                        conversionInfo.textContent = 'Error fetching conversion rate';
-                        conversionInfo.style.color = '#dc3545';  // Danger red color
-                    }
-                } catch (error) {
-                    conversionInfo.textContent = 'Error fetching conversion rate';
-                    conversionInfo.style.color = '#dc3545';
-                }
-            } else {
-                conversionInfo.textContent = '';
-            }
-        }
-
-        amountInput.addEventListener('input', updateConversion);
-        currencySelect.addEventListener('change', updateConversion);
-    }
-
-    // Setup currency conversion for all payment modals
-    document.querySelectorAll('[id^="paymentModal"]').forEach(modal => {
-        setupCurrencyConversion(modal.id);
-    });
+// Load products on page load
+document.addEventListener('DOMContentLoaded', async () => {
+    await loadProducts();
+    initializeBillForm();
 });
+
+async function loadProducts() {
+    try {
+        const response = await fetch('/api/products');
+        products = await response.json();
+        updateProductSelects();
+    } catch (error) {
+        console.error('Error loading products:', error);
+        showToast('Error', 'Failed to load products', true);
+    }
+}
+
+function updateProductSelects() {
+    const selects = document.querySelectorAll('.product-select');
+    selects.forEach(select => {
+        const currentValue = select.value;
+        select.innerHTML = '<option value="">Select Product</option>';
+        
+        products.forEach(product => {
+            const option = document.createElement('option');
+            option.value = product.id;
+            option.textContent = `${product.name} (Stock: ${product.stock_qty} ${product.unit})`;
+            option.dataset.price = product.sell_price;
+            option.dataset.stock = product.stock_qty;
+            if (product.id === currentValue) {
+                option.selected = true;
+            }
+            select.appendChild(option);
+        });
+    });
+}
+
+function initializeBillForm() {
+    const addItemBtn = document.getElementById('addItemBtn');
+    const billItemsContainer = document.getElementById('itemsContainer');
+    const itemTemplate = document.getElementById('itemTemplate');
+    
+    addItemBtn.addEventListener('click', () => {
+        const newItem = itemTemplate.content.cloneNode(true);
+        billItemsContainer.appendChild(newItem);
+        updateProductSelects();
+        attachItemEventListeners(newItem);
+    });
+    
+    // Add initial item
+    addItemBtn.click();
+}
+
+function attachItemEventListeners(itemElement) {
+    const productSelect = itemElement.querySelector('.product-select');
+    const quantityInput = itemElement.querySelector('.quantity-input');
+    const priceInput = itemElement.querySelector('.price-input');
+    const taxRateInput = itemElement.querySelector('.tax-rate-input');
+    const removeBtn = itemElement.querySelector('.remove-item');
+    
+    productSelect.addEventListener('change', () => {
+        const selectedOption = productSelect.options[productSelect.selectedIndex];
+        if (selectedOption.value) {
+            priceInput.value = selectedOption.dataset.price;
+            validateStock(quantityInput, selectedOption.dataset.stock);
+        }
+    });
+    
+    quantityInput.addEventListener('input', () => {
+        const selectedOption = productSelect.options[productSelect.selectedIndex];
+        if (selectedOption.value) {
+            validateStock(quantityInput, selectedOption.dataset.stock);
+        }
+    });
+    
+    taxRateInput.addEventListener('input', calculateTotals);
+    
+    removeBtn.addEventListener('click', () => {
+        itemElement.remove();
+        calculateTotal();
+    });
+}
+
+function calculateTotals() {
+    let subtotal = 0;
+    let totalTax = 0;
+
+    document.querySelectorAll('.item-row').forEach(item => {
+        const quantity = parseFloat(item.querySelector('.quantity-input').value) || 0;
+        const price = parseFloat(item.querySelector('.price-input').value) || 0;
+        const taxRate = parseFloat(item.querySelector('.tax-rate-input').value) || 0;
+
+        const itemSubtotal = quantity * price;
+        const itemTax = itemSubtotal * (taxRate / 100);
+
+        subtotal += itemSubtotal;
+        totalTax += itemTax;
+    });
+
+    const total = subtotal + totalTax;
+
+    document.getElementById('subtotal').textContent = subtotal.toFixed(2);
+    document.getElementById('totalTax').textContent = totalTax.toFixed(2);
+    document.getElementById('total').textContent = total.toFixed(2);
+}
+
+function validateStock(quantityInput, availableStock) {
+    const quantity = parseFloat(quantityInput.value);
+    const stock = parseFloat(availableStock);
+    
+    if (quantity > stock) {
+        quantityInput.classList.add('is-invalid');
+        showToast('Warning', `Insufficient stock! Only ${stock} units available.`, true);
+        return false;
+    } else {
+        quantityInput.classList.remove('is-invalid');
+        return true;
+    }
+}
+
+async function submitBill() {
+    const form = document.getElementById('createBillForm');
+    const formData = new FormData(form);
+    const items = [];
+    let hasInsufficientStock = false;
+    
+    // Collect all items and validate stock
+    const itemRows = document.querySelectorAll('.item-row');
+    for (const row of itemRows) {
+        const productId = row.querySelector('.product-select').value;
+        const quantity = parseFloat(row.querySelector('.quantity-input').value);
+        const price = parseFloat(row.querySelector('.price-input').value);
+        const taxRate = parseFloat(row.querySelector('.tax-rate-input').value || '0');
+        const product = products.find(p => p.id === parseInt(productId));
+        
+        if (productId && quantity && price) {
+            // Validate stock
+            if (!validateStock(row.querySelector('.quantity-input'), product.stock_qty)) {
+                hasInsufficientStock = true;
+                break;
+            }
+            
+            items.push({
+                product_id: parseInt(productId),
+                quantity: quantity,
+                price: price,
+                tax_rate: taxRate
+            });
+        }
+    }
+    
+    if (hasInsufficientStock) {
+        showToast('Error', 'Cannot create bill with insufficient stock', true);
+        return;
+    }
+    
+    const billData = {
+        client_id: formData.get('client_id'),
+        issue_date: formData.get('issue_date'),
+        due_date: formData.get('due_date'),
+        currency: formData.get('currency'),
+        items: items
+    };
+    
+    try {
+        const response = await fetch('/api/bills', {
+            method: 'POST',
+            headers: {
+                'Content-Type': 'application/json'
+            },
+            body: JSON.stringify(billData)
+        });
+        
+        if (!response.ok) {
+            const errorData = await response.json();
+            throw new Error(errorData.error || 'Failed to create bill');
+        }
+        
+        const result = await response.json();
+        showToast('Success', 'Bill created successfully!');
+        window.location.href = `/bills/${result.id}`;
+        
+    } catch (error) {
+        console.error('Error creating bill:', error);
+        showToast('Error', error.message || 'Failed to create bill', true);
+    }
+}
+
+// Add event listeners for both stock validation and calculations
+document.addEventListener('DOMContentLoaded', () => {
+    const itemsContainer = document.getElementById('itemsContainer');
+    
+    // Listen for changes in items container
+    itemsContainer.addEventListener('change', (e) => {
+        if (e.target.matches('.product-select')) {
+            const row = e.target.closest('.item-row');
+            const quantityInput = row.querySelector('.quantity-input');
+            const selectedOption = e.target.options[e.target.selectedIndex];
+            
+            if (selectedOption.value) {
+                validateStock(quantityInput, selectedOption.dataset.stock);
+                // Update price when product is selected
+                const priceInput = row.querySelector('.price-input');
+                priceInput.value = selectedOption.dataset.price;
+            }
+            calculateTotals();
+        } else if (e.target.matches('.quantity-input')) {
+            const row = e.target.closest('.item-row');
+            const productSelect = row.querySelector('.product-select');
+            const selectedOption = productSelect.options[productSelect.selectedIndex];
+            
+            if (selectedOption.value) {
+                validateStock(e.target, selectedOption.dataset.stock);
+            }
+            calculateTotals();
+        } else if (e.target.matches('.price-input, .tax-rate-input')) {
+            calculateTotals();
+        }
+    });
+    
+    // Listen for new items being added
+    const observer = new MutationObserver((mutations) => {
+        mutations.forEach((mutation) => {
+            if (mutation.addedNodes.length) {
+                calculateTotals();
+            }
+        });
+    });
+    
+    observer.observe(itemsContainer, { childList: true });
+});
+
+// Toast notification function
+function showToast(title, message, isError = false) {
+    const toast = document.getElementById('alertToast');
+    const toastTitle = document.getElementById('toastTitle');
+    const toastMessage = document.getElementById('toastMessage');
+    
+    toast.classList.remove('bg-danger', 'text-white', 'bg-success');
+    if (isError) {
+        toast.classList.add('bg-danger', 'text-white');
+    } else {
+        toast.classList.add('bg-success', 'text-white');
+    }
+    
+    toastTitle.textContent = title;
+    toastMessage.textContent = message;
+    bootstrap.Toast.getOrCreateInstance(toast).show();
+}
 </script>
 {% endblock %}
 

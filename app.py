@@ -459,10 +459,10 @@ def mark_paid(bill_id):
     db.session.add(transaction)
     
     try:
-    db.session.commit()
+        db.session.commit()
         if bill.status == 'Paid':
             flash(f'Bill #{bill.bill_number} marked as paid. Payment recorded in cash flow.', 'success')
-    else:
+        else:
             remaining = bill.total_amount - bill.paid_amount
             flash(f'Payment of {payment_amount} {bill.currency} recorded. Remaining balance: {remaining} {bill.currency}', 'success')
     except Exception as e:
