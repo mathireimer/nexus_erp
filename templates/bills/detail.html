@@ -1,0 +1,140 @@
+{% extends "base.html" %}
+
+{% block title %}Bill #{{ bill.number }} - {{ bill.vendor.name }}{% endblock %}
+
+{% block content %}
+<div class="container-fluid py-4">
+    <!-- Action buttons - no-print -->
+    <div class="row mb-4 no-print">
+        <div class="col">
+            <button class="btn btn-primary me-2" onclick="window.print()">
+                <i class="fas fa-print"></i> Print Bill
+            </button>
+            <button class="btn btn-success me-2" data-bs-toggle="modal" data-bs-target="#recordPaymentModal">
+                <i class="fas fa-money-bill"></i> Record Payment
+            </button>
+            <button class="btn btn-info me-2">
+                <i class="fas fa-edit"></i> Edit
+            </button>
+            <button class="btn btn-danger">
+                <i class="fas fa-trash"></i> Delete
+            </button>
+        </div>
+    </div>
+
+    <!-- Printable bill content -->
+    <div class="bill-content">
+        <!-- Header -->
+        <div class="bill-header">
+            <div class="row">
+                <div class="col-6">
+                    <img src="{{ url_for('static', filename='img/logo.png') }}" alt="Company Logo" class="company-logo">
+                </div>
+                <div class="col-6 text-end">
+                    <h1>BILL</h1>
+                    <p class="mb-0">#{{ bill.number }}</p>
+                    <p class="mb-0">Date: {{ bill.date.strftime('%B %d, %Y') }}</p>
+                    <p>Due Date: {{ bill.due_date.strftime('%B %d, %Y') }}</p>
+                </div>
+            </div>
+        </div>
+
+        <!-- Addresses -->
+        <div class="addresses mb-4">
+            <div class="bill-from">
+                <h6 class="text-muted">BILL FROM</h6>
+                <h5>{{ bill.vendor.name }}</h5>
+                <p class="mb-0">{{ bill.vendor.address }}</p>
+                <p class="mb-0">{{ bill.vendor.email }}</p>
+                <p>{{ bill.vendor.phone }}</p>
+            </div>
+            <div class="bill-to">
+                <h6 class="text-muted">BILL TO</h6>
+                <h5>{{ config['COMPANY_NAME'] }}</h5>
+                <p class="mb-0">{{ config['COMPANY_ADDRESS'] }}</p>
+                <p class="mb-0">{{ config['COMPANY_EMAIL'] }}</p>
+                <p>{{ config['COMPANY_PHONE'] }}</p>
+            </div>
+        </div>
+
+        <!-- Items Table -->
+        <div class="table-responsive mb-4">
+            <table class="table items-table">
+                <thead>
+                    <tr>
+                        <th>Item</th>
+                        <th>Description</th>
+                        <th class="text-end">Quantity</th>
+                        <th class="text-end">Unit Price</th>
+                        <th class="text-end">Total</th>
+                    </tr>
+                </thead>
+                <tbody>
+                    {% for item in bill.items %}
+                    <tr>
+                        <td>{{ item.product.name }}</td>
+                        <td>{{ item.description }}</td>
+                        <td class="text-end">{{ item.quantity }}</td>
+                        <td class="text-end">{{ "{:,.2f}".format(item.unit_price) }}</td>
+                        <td class="text-end">{{ "{:,.2f}".format(item.total) }}</td>
+                    </tr>
+                    {% endfor %}
+                </tbody>
+            </table>
+        </div>
+
+        <!-- Totals -->
+        <div class="bill-totals">
+            <table class="table table-borderless">
+                <tr>
+                    <td>Subtotal:</td>
+                    <td class="text-end">{{ "{:,.2f}".format(bill.subtotal) }}</td>
+                </tr>
+                <tr>
+                    <td>Tax ({{ "{:.1f}".format(bill.tax_rate * 100) }}%):</td>
+                    <td class="text-end">{{ "{:,.2f}".format(bill.tax_amount) }}</td>
+                </tr>
+                <tr class="total-row">
+                    <td>Total:</td>
+                    <td class="text-end">{{ "{:,.2f}".format(bill.total) }}</td>
+                </tr>
+                <tr>
+                    <td>Amount Paid:</td>
+                    <td class="text-end">{{ "{:,.2f}".format(bill.amount_paid) }}</td>
+                </tr>
+                <tr class="total-row">
+                    <td>Balance Due:</td>
+                    <td class="text-end">{{ "{:,.2f}".format(bill.balance_due) }}</td>
+                </tr>
+            </table>
+        </div>
+
+        <!-- Notes -->
+        {% if bill.notes %}
+        <div class="bill-notes">
+            <h6>Notes</h6>
+            <p>{{ bill.notes }}</p>
+        </div>
+        {% endif %}
+
+        <!-- Footer -->
+        <div class="bill-footer">
+            <p class="mb-0">Thank you for your business!</p>
+            <small>{{ config['COMPANY_NAME'] }} - {{ config['COMPANY_ADDRESS'] }}</small>
+        </div>
+    </div>
+</div>
+
+<!-- Record Payment Modal -->
+{% include 'modals/record_payment.html' %}
+{% endblock %}
+
+{% block scripts %}
+<script>
+    // Initialize datepicker for payment date
+    flatpickr("#payment_date", {
+        dateFormat: "Y-m-d",
+        defaultDate: "today"
+    });
+</script>
+{% endblock %} 

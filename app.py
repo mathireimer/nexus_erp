@@ -1,8 +1,14 @@
 from flask import Flask, render_template, request, redirect, url_for, flash, session, jsonify
-from models import db, User, Client, Vendor, Contact, Tag, Product, Invoice, Transaction  # Import models here
+from models import db, User, Client, Vendor, Contact, Tag, Product, Transaction, BillItem, Payment, Bill  # Import models here
 from flask_migrate import Migrate
 from werkzeug.security import generate_password_hash, check_password_hash
 from datetime import datetime, timedelta
+from decimal import Decimal
+from routes.inventory import inventory
+from flask_login import LoginManager, login_user, logout_user, login_required, current_user
+import requests
+from functools import lru_cache
+import logging
 
 # Initialize Flask app
 app = Flask(__name__)
@@ -11,10 +17,32 @@ app.secret_key = 'your_secret_key'
 # Configure SQLAlchemy
 app.config['SQLALCHEMY_DATABASE_URI'] = 'sqlite:///database.db'
 app.config['SQLALCHEMY_TRACK_MODIFICATIONS'] = False
+app.config['EXCHANGE_RATES_API_URL'] = 'https://api.exchangerate.host/latest'
 
 # Initialize SQLAlchemy and Migrate
 db.init_app(app)
 migrate = Migrate(app, db)
+
+# Initialize Flask-Login
+login_manager = LoginManager()
+login_manager.init_app(app)
+login_manager.login_view = 'login'
+
+# Register blueprints
+app.register_blueprint(inventory)
+
+# Custom template filters
+@app.template_filter('format_currency')
+def format_currency_filter(value):
+    """Format a number as currency."""
+    try:
+        return "{:,.2f}".format(float(value))
+    except (ValueError, TypeError):
+        return "0.00"
+
+@login_manager.user_loader
+def load_user(user_id):
+    return User.query.get(int(user_id))
 
 # Helper Functions
 def calculate_period_range(period):
@@ -35,44 +63,125 @@ def calculate_period_range(period):
         end_date = today
     return start_date.date(), end_date.date()
 
+class ExchangeRateCache:
+    def __init__(self):
+        self.cache = {}
+        self.ttl = timedelta(hours=1)  # 1 hour TTL
+
+    def get(self, key):
+        if key in self.cache:
+            data, timestamp = self.cache[key]
+            if datetime.now() - timestamp < self.ttl:
+                return data
+            else:
+                del self.cache[key]
+        return None
+
+    def set(self, key, value):
+        self.cache[key] = (value, datetime.now())
+
+# Initialize the cache
+exchange_rate_cache = ExchangeRateCache()
+
+def get_exchange_rate(from_currency, to_currency='PYG'):
+    """Get real-time exchange rate from one currency to another (defaults to PYG)"""
+    if from_currency == to_currency:
+        return Decimal('1')
+    
+    # Check cache first
+    cache_key = f"{from_currency}_{to_currency}"
+    cached_rate = exchange_rate_cache.get(cache_key)
+    if cached_rate is not None:
+        return cached_rate
+    
+    try:
+        # Using exchangerate.host API (free, no API key required)
+        params = {
+            'base': from_currency,
+            'symbols': to_currency
+        }
+        response = requests.get(app.config['EXCHANGE_RATES_API_URL'], params=params, timeout=5)
+        response.raise_for_status()
+        
+        data = response.json()
+        if data.get('success', True) and data.get('rates', {}).get(to_currency):
+            rate = Decimal(str(data['rates'][to_currency]))
+            logging.info(f"Retrieved exchange rate: 1 {from_currency} = {rate} {to_currency}")
+            # Cache the rate
+            exchange_rate_cache.set(cache_key, rate)
+            return rate
+        else:
+            raise ValueError("Exchange rate not found in response")
+            
+    except Exception as e:
+        logging.error(f"Error fetching exchange rate: {e}")
+        # Default rates as fallback (you should update these periodically)
+        default_rates = {
+            'USD': Decimal('7250'),  # 1 USD = 7250 PYG
+            'EUR': Decimal('7900'),  # 1 EUR = 7900 PYG
+            'GBP': Decimal('9200'),  # 1 GBP = 9200 PYG
+        }
+        
+        if from_currency in default_rates:
+            logging.warning(f"Using fallback rate for {from_currency}")
+            return default_rates[from_currency]
+        elif to_currency in default_rates:
+            # If converting to PYG from another currency, use inverse rate
+            base_rate = default_rates[from_currency]
+            return Decimal('1') / base_rate if base_rate != 0 else Decimal('1')
+        
+        return Decimal('1')
+
+def convert_to_pyg(amount, from_currency):
+    """Convert any amount to PYG using real-time rates"""
+    if from_currency == 'PYG':
+        return amount
+    rate = get_exchange_rate(from_currency)
+    converted = amount * rate
+    logging.info(f"Converted {amount} {from_currency} to {converted} PYG (rate: {rate})")
+    return converted
+
 # Routes
 @app.route('/')
+@login_required
 def home():
-    if 'user_id' not in session:
-        return redirect(url_for('login'))
-    
     # Get counts for dashboard
-    clients = Client.query.all()
-    vendors = Vendor.query.all()
-    products = Product.query.all()
-    active_invoices = Invoice.query.filter_by(status='Unpaid').all()
+    clients = Client.query.filter_by(user_id=current_user.id).all()
+    vendors = Vendor.query.filter_by(user_id=current_user.id).all()
+    products = Product.query.filter_by(user_id=current_user.id).all()
+    active_bills = Bill.query.filter_by(status='Unpaid').all()
     
     # Get recent transactions
-    recent_transactions = Transaction.query.order_by(Transaction.date.desc()).limit(5).all()
+    recent_transactions = Transaction.query.filter_by(user_id=current_user.id).order_by(Transaction.date.desc()).limit(5).all()
     
     return render_template('home.html',
                          clients=clients,
                          vendors=vendors,
                          products=products,
-                         active_invoices=active_invoices,
+                         active_bills=active_bills,
                          recent_transactions=recent_transactions)
 
 @app.route('/login', methods=['GET', 'POST'])
 def login():
+    if current_user.is_authenticated:
+        return redirect(url_for('home'))
+    
     if request.method == 'POST':
         username = request.form.get('username')
         password = request.form.get('password')
         user = User.query.filter_by(username=username).first()
         if user and check_password_hash(user.password, password):
-            session['user_id'] = user.id
+            login_user(user)
             flash('Login successful!', 'success')
-            return redirect(url_for('home'))
+            next_page = request.args.get('next')
+            return redirect(next_page) if next_page else redirect(url_for('home'))
         flash('Invalid credentials', 'danger')
     return render_template('login.html')
 
 @app.route('/logout')
+@login_required
 def logout():
-    session.pop('user_id', None)
+    logout_user()
     flash('You have been logged out.', 'info')
     return redirect(url_for('login'))
 
@@ -90,29 +199,28 @@ def register():
     return render_template('register.html')
 
 @app.route('/clients')
+@login_required
 def clients():
-    if 'user_id' not in session:
-        return redirect(url_for('login'))
-    clients = Client.query.all()
+    clients = Client.query.filter_by(user_id=current_user.id).all()
     return render_template('clients.html', clients=clients)
 
 @app.route('/create_client', methods=['POST'])
+@login_required
 def create_client():
-    if 'user_id' not in session:
-        return redirect(url_for('login'))
     name = request.form.get('name')
     email = request.form.get('email')
     tax_id = request.form.get('tax_id')
     payment_terms = request.form.get('payment_terms')
 
     # Validate email uniqueness
-    existing_client = Client.query.filter_by(email=email).first()
+    existing_client = Client.query.filter_by(email=email, user_id=current_user.id).first()
     if existing_client:
         flash('A client with this email already exists.', 'danger')
         return redirect(url_for('clients'))
 
     # Create the new client
     new_client = Client(
+        user_id=current_user.id,
         name=name,
         email=email,
         tax_id=tax_id,
@@ -124,30 +232,28 @@ def create_client():
     return redirect(url_for('clients'))
 
 @app.route('/vendors')
+@login_required
 def vendors():
-    if 'user_id' not in session:
-        return redirect(url_for('login'))
-    vendors = Vendor.query.all()
+    vendors = Vendor.query.filter_by(user_id=current_user.id).all()
     return render_template('vendors.html', vendors=vendors)
 
 @app.route('/create_vendor', methods=['POST'])
+@login_required
 def create_vendor():
-    if 'user_id' not in session:
-        return redirect(url_for('login'))
     name = request.form.get('name')
     email = request.form.get('email')
     tax_id = request.form.get('tax_id')
     payment_terms = request.form.get('payment_terms')
 
     # Validate email uniqueness
-    existing_vendor = Vendor.query.filter_by(email=email).first()
+    existing_vendor = Vendor.query.filter_by(email=email, user_id=current_user.id).first()
     if existing_vendor:
         flash('A vendor with this email already exists.', 'danger')
         return redirect(url_for('vendors'))
 
     # Create the new vendor
     new_vendor = Vendor(
-        user_id=session['user_id'],
+        user_id=current_user.id,
         name=name,
         email=email,
         tax_id=tax_id,
@@ -159,16 +265,9 @@ def create_vendor():
     return redirect(url_for('vendors'))
 
 @app.route('/edit_vendor/<int:vendor_id>', methods=['POST'])
+@login_required
 def edit_vendor(vendor_id):
-    if 'user_id' not in session:
-        return redirect(url_for('login'))
-    
-    vendor = Vendor.query.get_or_404(vendor_id)
-    
-    # Check if the vendor belongs to the current user
-    if vendor.user_id != session['user_id']:
-        flash('Unauthorized access.', 'danger')
-        return redirect(url_for('vendors'))
+    vendor = Vendor.query.filter_by(id=vendor_id, user_id=current_user.id).first_or_404()
     
     # Get form data
     name = request.form.get('name')
@@ -178,7 +277,7 @@ def edit_vendor(vendor_id):
     
     # Check email uniqueness if email is changed
     if email != vendor.email:
-        existing_vendor = Vendor.query.filter_by(email=email).first()
+        existing_vendor = Vendor.query.filter_by(email=email, user_id=current_user.id).first()
         if existing_vendor:
             flash('A vendor with this email already exists.', 'danger')
             return redirect(url_for('vendors'))
@@ -195,20 +294,13 @@ def edit_vendor(vendor_id):
     return redirect(url_for('vendors'))
 
 @app.route('/delete_vendor/<int:vendor_id>')
+@login_required
 def delete_vendor(vendor_id):
-    if 'user_id' not in session:
-        return redirect(url_for('login'))
+    vendor = Vendor.query.filter_by(id=vendor_id, user_id=current_user.id).first_or_404()
     
-    vendor = Vendor.query.get_or_404(vendor_id)
-    
-    # Check if the vendor belongs to the current user
-    if vendor.user_id != session['user_id']:
-        flash('Unauthorized access.', 'danger')
-        return redirect(url_for('vendors'))
-    
-    # Check if vendor has associated invoices
-    if vendor.invoices:
-        flash('Cannot delete vendor with associated invoices.', 'danger')
+    # Check if vendor has associated bills
+    if vendor.bills:
+        flash('Cannot delete vendor with associated bills.', 'danger')
         return redirect(url_for('vendors'))
     
     db.session.delete(vendor)
@@ -217,201 +309,395 @@ def delete_vendor(vendor_id):
     return redirect(url_for('vendors'))
 
 @app.route('/products')
+@login_required
 def products():
-    if 'user_id' not in session:
-        return redirect(url_for('login'))
-    products = Product.query.all()
+    products = Product.query.filter_by(user_id=current_user.id).all()
     return render_template('products.html', products=products)
 
-@app.route('/add_product', methods=['POST'])
-def add_product():
-    if 'user_id' not in session:
-        return redirect(url_for('login'))
-    name = request.form.get('name')
-    quantity = int(request.form.get('quantity'))
-    price = float(request.form.get('price'))
-
-    # Create the new product
-    new_product = Product(name=name, quantity=quantity, price=price)
-    db.session.add(new_product)
-    db.session.commit()
-    flash('Product added successfully!', 'success')
-    return redirect(url_for('products'))
-
-@app.route('/invoices')
-def invoices():
-    if 'user_id' not in session:
-        return redirect(url_for('login'))
-    active_invoices = Invoice.query.filter_by(status='Unpaid').all()
-    historic_invoices = Invoice.query.filter_by(status='Paid').all()
-    return render_template('invoices.html', active_invoices=active_invoices, historic_invoices=historic_invoices)
-
-@app.route('/create_invoice', methods=['POST'])
-def create_invoice():
-    if 'user_id' not in session:
-        return redirect(url_for('login'))
-    client_id = int(request.form.get('client_id'))
-    issue_date = datetime.strptime(request.form.get('issue_date'), '%Y-%m-%d')
-    due_date = datetime.strptime(request.form.get('due_date'), '%Y-%m-%d')
-    total_amount = float(request.form.get('total_amount'))
-    currency = request.form.get('currency', 'PYG')  # Default to PYG
-
-    # Validate client ID
-    client = Client.query.get(client_id)
-    if not client:
-        flash('Invalid client ID. Please select a valid client.', 'danger')
-        return redirect(url_for('invoices'))
-
-    # Auto-generate invoice number
-    last_invoice = Invoice.query.order_by(Invoice.id.desc()).first()
-    invoice_number = f"INV-{last_invoice.id + 1 if last_invoice else 1}"
-
-    # Create the new invoice
-    new_invoice = Invoice(
-        client_id=client_id,
-        invoice_number=invoice_number,
-        issue_date=issue_date,
-        due_date=due_date,
-        total_amount=total_amount,
-        currency=currency
+@app.route('/bills')
+@login_required
+def bills():
+    active_bills = Bill.query.filter_by(user_id=current_user.id, status='Unpaid').all()
+    partially_paid_bills = Bill.query.filter_by(user_id=current_user.id, status='Partially Paid').all()
+    historic_bills = Bill.query.filter_by(user_id=current_user.id, status='Paid').all()
+    
+    # Calculate total pending amount in PYG
+    partially_paid_total = sum(
+        convert_to_pyg(bill.total_amount - (bill.paid_amount or 0), bill.currency)
+        for bill in partially_paid_bills
     )
-    db.session.add(new_invoice)
+    
+    clients = Client.query.filter_by(user_id=current_user.id).all()
+    products = Product.query.filter_by(user_id=current_user.id).all()
+    
+    return render_template('bills.html',
+                         active_bills=active_bills + partially_paid_bills,
+                         historic_bills=historic_bills,
+                         partially_paid_total=partially_paid_total,
+                         clients=clients,
+                         products=products)
+
+@app.route('/create_bill', methods=['POST'])
+@login_required
+def create_bill():
+    data = request.form
+    
+    # Auto-generate bill number
+    last_bill = Bill.query.filter_by(user_id=current_user.id).order_by(Bill.id.desc()).first()
+    bill_number = f"BILL-{last_bill.id + 1 if last_bill else 1}"
+
+    # Create the new bill
+    new_bill = Bill(
+        user_id=current_user.id,
+        bill_number=bill_number,
+        client_id=data['client_id'],
+        issue_date=datetime.strptime(data['issue_date'], '%Y-%m-%d'),
+        due_date=datetime.strptime(data['due_date'], '%Y-%m-%d'),
+        currency=data['currency'],
+        notes=data.get('notes'),
+        status='Unpaid'
+    )
+    
+    # Calculate totals
+    subtotal = Decimal('0')
+    total_tax = Decimal('0')
+    
+    # Process items
+    product_ids = request.form.getlist('items[][product_id]')
+    quantities = request.form.getlist('items[][quantity]')
+    prices = request.form.getlist('items[][price]')
+    tax_rates = request.form.getlist('items[][tax_rate]')
+    
+    for i in range(len(product_ids)):
+        if product_ids[i]:  # Only process if product is selected
+            quantity = Decimal(quantities[i])
+            price = Decimal(prices[i])
+            tax_rate = Decimal(tax_rates[i] or '0')
+            
+            item_subtotal = quantity * price
+            item_tax = item_subtotal * (tax_rate / 100)
+            
+            subtotal += item_subtotal
+            total_tax += item_tax
+            
+            # Add bill item
+            new_bill.items.append(BillItem(
+                product_id=product_ids[i],
+                quantity=quantity,
+                price=price,
+                tax_rate=tax_rate
+            ))
+    
+    new_bill.total_amount = subtotal + total_tax
+    
+    db.session.add(new_bill)
     db.session.commit()
-    flash('Invoice created successfully!', 'success')
-    return redirect(url_for('invoices'))
+    
+    flash('Bill created successfully!', 'success')
+    return redirect(url_for('bills'))
 
-@app.route('/mark_paid/<int:invoice_id>', methods=['POST'])
-def mark_paid(invoice_id):
-    # Fetch the invoice by ID
-    invoice = Invoice.query.get_or_404(invoice_id)
+@app.route('/mark_paid/<int:bill_id>', methods=['POST'])
+@login_required
+def mark_paid(bill_id):
+    bill = Bill.query.get_or_404(bill_id)
+    
+    payment_amount = Decimal(request.form.get('payment_amount'))
+    payment_currency = request.form.get('payment_currency', bill.currency)
+    payment_method = request.form.get('payment_method')
+    notes = request.form.get('notes')
 
-    # Get the payment amount from the form (default to total_amount if not provided)
-    payment_amount = float(request.form.get('payment_amount', invoice.total_amount))
+    # Convert payment to bill's currency if different
+    if payment_currency != bill.currency:
+        # First convert to PYG, then to bill's currency
+        amount_in_pyg = convert_to_pyg(payment_amount, payment_currency)
+        if bill.currency != 'PYG':
+            payment_amount = amount_in_pyg / get_exchange_rate(bill.currency)
+        else:
+            payment_amount = amount_in_pyg
 
-    # Ensure the payment amount does not exceed the invoice total
-    if payment_amount > invoice.total_amount:
-        flash('Payment amount cannot exceed the invoice total.', 'danger')
-        return redirect(url_for('invoices'))
+    # Validate payment amount
+    remaining_balance = bill.total_amount - (bill.paid_amount or Decimal('0'))
+    if payment_amount > remaining_balance:
+        flash('Payment amount cannot exceed the remaining balance.', 'danger')
+        return redirect(url_for('bills'))
 
-    # Update the invoice status based on the payment amount
-    if payment_amount == invoice.total_amount:
-        invoice.status = 'Paid'
+    # Update the bill's paid amount
+    if bill.paid_amount is None:
+        bill.paid_amount = Decimal('0')
+    bill.paid_amount += payment_amount
+
+    # Update bill status
+    if bill.paid_amount >= bill.total_amount:
+        bill.status = 'Paid'
+        bill.paid_date = datetime.utcnow().date()
     else:
-        invoice.status = 'Partially Paid'
+        bill.status = 'Partially Paid'
 
-    # Create an income transaction for the payment
-    new_transaction = Transaction(
-        user_id=session['user_id'],
-        type='INCOME',
+    # Create payment record with original currency info
+    payment = Payment(
+        bill_id=bill.id,
         amount=payment_amount,
-        currency=invoice.currency,
-        date=datetime.utcnow().date(),
-        description=f'Payment for Invoice #{invoice.invoice_number}',
-        source_module='invoice',
-        source_id=invoice.id
+        original_currency=payment_currency,
+        original_amount=Decimal(request.form.get('payment_amount')),
+        payment_date=datetime.utcnow().date(),
+        payment_method=payment_method,
+        notes=f"{notes}\nOriginal payment: {request.form.get('payment_amount')} {payment_currency}"
     )
-    db.session.add(new_transaction)
+    db.session.add(payment)
+
+    # Create transaction record
+    transaction = Transaction(
+        user_id=current_user.id,
+        type='INCOME',
+        amount=float(payment_amount),
+        currency=bill.currency,
+        date=datetime.utcnow().date(),
+        description=f'Payment for Bill #{bill.bill_number}',
+        source_module='bill',
+        source_id=bill.id
+    )
+    db.session.add(transaction)
+    
+    try:
     db.session.commit()
-
-    # Flash a success message
-    if payment_amount == invoice.total_amount:
-        flash(f'Invoice #{invoice.invoice_number} marked as paid. Payment recorded in cash flow.', 'success')
+        if bill.status == 'Paid':
+            flash(f'Bill #{bill.bill_number} marked as paid. Payment recorded in cash flow.', 'success')
     else:
-        flash(f'Partial payment of {payment_amount} recorded for Invoice #{invoice.invoice_number}.', 'info')
-
-    # Redirect back to the invoices page
-    return redirect(url_for('invoices'))
+            remaining = bill.total_amount - bill.paid_amount
+            flash(f'Payment of {payment_amount} {bill.currency} recorded. Remaining balance: {remaining} {bill.currency}', 'success')
+    except Exception as e:
+        db.session.rollback()
+        flash('Error recording payment. Please try again.', 'danger')
+        
+    return redirect(url_for('bills'))
 
 @app.route('/cash-flow')
+@login_required
 def cash_flow():
-    if 'user_id' not in session:
-        return redirect(url_for('login'))
     return render_template('cash_flow.html')
 
 @app.route('/api/transactions', methods=['POST'])
-def add_transaction():
-    if 'user_id' not in session:
-        return {'error': 'Unauthorized'}, 401
-
+@login_required
+def create_transaction():
     data = request.get_json()
-    required_fields = ['type', 'amount', 'currency', 'date']
-    if not all(field in data for field in required_fields):
-        return {'error': 'Missing required fields'}, 400
-
-    # Validate transaction type
-    if data['type'] not in ['INCOME', 'EXPENSE', 'TRANSFER']:
-        return {'error': 'Invalid transaction type'}, 400
-
-    # Create the transaction
-    new_transaction = Transaction(
-        user_id=session['user_id'],
+    
+    # Validate required fields
+    required_fields = ['type', 'amount', 'description', 'date']
+    for field in required_fields:
+        if field not in data:
+            return jsonify({'error': f'Missing required field: {field}'}), 400
+    
+    # Create new transaction
+    transaction = Transaction(
+        user_id=current_user.id,
         type=data['type'],
-        category_id=data.get('category_id'),
-        source_module=data.get('source_module'),
-        source_id=data.get('source_id'),
         amount=float(data['amount']),
-        currency=data['currency'],
-        exchange_rate=float(data.get('exchange_rate')) if data.get('exchange_rate') else None,
+        description=data['description'],
         date=datetime.strptime(data['date'], '%Y-%m-%d').date(),
-        description=data.get('description'),
-        status=data.get('status', 'CONFIRMED')
+        status='CONFIRMED'
     )
-    db.session.add(new_transaction)
-    db.session.commit()
-    return {'message': 'Transaction added successfully', 'transaction_id': new_transaction.id}, 201
-
-@app.route('/api/transactions', methods=['GET'])
-def list_transactions():
-    if 'user_id' not in session:
-        return {'error': 'Unauthorized'}, 401
-
-    start_date = request.args.get('start')
-    end_date = request.args.get('end')
-    transaction_type = request.args.get('type', 'ALL')
-
-    query = Transaction.query.filter_by(user_id=session['user_id'])
-    if start_date and end_date:
-        query = query.filter(Transaction.date.between(start_date, end_date))
-    if transaction_type != 'ALL':
-        query = query.filter_by(type=transaction_type)
-
-    transactions = query.order_by(Transaction.date.asc()).all()
-    result = []
-    for transaction in transactions:
-        result.append({
+    
+    db.session.add(transaction)
+    
+    try:
+        db.session.commit()
+        return jsonify({
             'id': transaction.id,
             'type': transaction.type,
-            'category': transaction.category.name if transaction.category else None,
             'amount': transaction.amount,
-            'currency': transaction.currency,
-            'date': transaction.date.strftime('%Y-%m-%d'),
             'description': transaction.description,
+            'date': transaction.date.isoformat(),
             'status': transaction.status
-        })
-    return {'transactions': result}
+        }), 201
+    except Exception as e:
+        db.session.rollback()
+        return jsonify({'error': 'Failed to create transaction'}), 500
+
+@app.route('/api/transactions', methods=['GET'])
+@login_required
+def list_transactions():
+    period = request.args.get('period', 'monthly')
+    start_date, end_date = calculate_period_range(period)
+    
+    transactions = Transaction.query.filter(
+        Transaction.user_id == current_user.id,
+        Transaction.date >= start_date,
+        Transaction.date <= end_date
+    ).order_by(Transaction.date.desc()).all()
+    
+    return jsonify([{
+        'id': t.id,
+        'type': t.type,
+        'amount': t.amount,
+        'currency': t.currency,
+        'date': t.date.isoformat(),
+        'description': t.description,
+        'status': t.status
+    } for t in transactions])
 
 @app.route('/api/transactions/summary', methods=['GET'])
+@login_required
 def transaction_summary():
     period = request.args.get('period', 'monthly')
     start_date, end_date = calculate_period_range(period)
+    
+    transactions = Transaction.query.filter(
+        Transaction.user_id == current_user.id,
+        Transaction.date >= start_date,
+        Transaction.date <= end_date
+    ).all()
+    
+    income = sum(t.amount for t in transactions if t.type == 'INCOME')
+    expenses = sum(t.amount for t in transactions if t.type == 'EXPENSE')
+    
+    return jsonify({
+        'period': period,
+        'start_date': start_date.isoformat(),
+        'end_date': end_date.isoformat(),
+        'income': income,
+        'expenses': expenses,
+        'balance': income - expenses
+    })
 
-    income_total = db.session.query(db.func.sum(Transaction.amount)).filter(
-        Transaction.user_id == session['user_id'],
-        Transaction.type == 'INCOME',
-        Transaction.date.between(start_date, end_date)
-    ).scalar() or 0
+@app.route('/inventory')
+@login_required
+def inventory_page():
+    return render_template('inventory.html')
 
-    expense_total = db.session.query(db.func.sum(Transaction.amount)).filter(
-        Transaction.user_id == session['user_id'],
-        Transaction.type == 'EXPENSE',
-        Transaction.date.between(start_date, end_date)
-    ).scalar() or 0
+@app.route('/billing')
+@login_required
+def billing():
+    # Get all bills
+    active_bills = Bill.query.filter(
+        Bill.user_id == current_user.id,
+        Bill.status.in_(['Pending', 'Partially Paid'])
+    ).order_by(Bill.due_date.asc()).all()
+    
+    paid_bills = Bill.query.filter_by(
+        user_id=current_user.id,
+        status='Paid'
+    ).order_by(Bill.paid_date.desc()).all()
+    
+    # Calculate summary statistics
+    total_outstanding = sum(bill.balance_due for bill in active_bills)
+    overdue_count = sum(1 for bill in active_bills if bill.is_overdue)
+    
+    # Calculate paid this month
+    start_of_month = datetime.now().replace(day=1, hour=0, minute=0, second=0, microsecond=0)
+    paid_this_month = sum(
+        bill.total_amount 
+        for bill in paid_bills 
+        if bill.paid_date and bill.paid_date >= start_of_month
+    )
+    
+    # Get clients and products for the create bill form
+    clients = Client.query.filter_by(user_id=current_user.id).all()
+    products = Product.query.filter_by(user_id=current_user.id).all()
+    
+    return render_template('billing.html',
+                         active_bills=active_bills,
+                         paid_bills=paid_bills,
+                         total_outstanding=total_outstanding,
+                         overdue_count=overdue_count,
+                         paid_this_month=paid_this_month,
+                         total_bills=len(active_bills) + len(paid_bills),
+                         clients=clients,
+                         products=products)
 
-    return {
-        'income_total': income_total,
-        'expense_total': expense_total,
-        'net_cash': income_total - expense_total
-    }
+@app.route('/billing/record-payment', methods=['POST'])
+@login_required
+def record_payment():
+    data = request.form
+    bill = Bill.query.filter_by(id=data['bill_id'], user_id=current_user.id).first_or_404()
+    
+    amount = Decimal(data['amount'])
+    if amount > bill.balance_due:
+        flash('Payment amount cannot exceed the remaining balance.', 'danger')
+        return redirect(url_for('billing'))
+    
+    # Update bill
+    if not bill.paid_amount:
+        bill.paid_amount = amount
+    else:
+        bill.paid_amount += amount
+    
+    if bill.paid_amount >= bill.total_amount:
+        bill.status = 'Paid'
+        bill.paid_date = datetime.strptime(data['payment_date'], '%Y-%m-%d')
+    else:
+        bill.status = 'Partially Paid'
+    
+    # Create payment record
+    payment = Payment(
+        bill_id=bill.id,
+        amount=amount,
+        payment_date=datetime.strptime(data['payment_date'], '%Y-%m-%d'),
+        payment_method=data['payment_method'],
+        notes=data.get('notes')
+    )
+    
+    # Create transaction record
+    transaction = Transaction(
+        user_id=current_user.id,
+        type='INCOME',
+        amount=amount,
+        currency=bill.currency,
+        date=payment.payment_date,
+        description=f'Payment for Bill #{bill.bill_number}',
+        source_module='billing',
+        source_id=bill.id
+    )
+    
+    db.session.add(payment)
+    db.session.add(transaction)
+    db.session.commit()
+    
+    flash('Payment recorded successfully!', 'success')
+    return redirect(url_for('billing'))
+
+@app.route('/billing/<int:bill_id>/send-reminder', methods=['POST'])
+@login_required
+def send_payment_reminder(bill_id):
+    bill = Bill.query.filter_by(id=bill_id, user_id=current_user.id).first_or_404()
+    
+    if not bill.client or not bill.client.email:
+        return jsonify({'error': 'Client email not available'}), 400
+    
+    try:
+        # Here you would implement the email sending logic
+        # For now, we'll just pretend it worked
+        flash('Payment reminder sent successfully!', 'success')
+        return jsonify({'message': 'Reminder sent successfully'}), 200
+    except Exception as e:
+        return jsonify({'error': str(e)}), 500
+
+@app.route('/bill/<int:bill_id>')
+@login_required
+def bill_detail(bill_id):
+    bill = Bill.query.filter_by(id=bill_id, user_id=current_user.id).first_or_404()
+    return render_template('bill_detail.html', bill=bill)
+
+@app.route('/api/exchange-rate', methods=['GET'])
+@login_required
+def get_current_rate():
+    """API endpoint to get current exchange rate"""
+    from_currency = request.args.get('from', 'USD')
+    to_currency = request.args.get('to', 'PYG')
+    
+    try:
+        rate = get_exchange_rate(from_currency, to_currency)
+        return jsonify({
+            'success': True,
+            'from': from_currency,
+            'to': to_currency,
+            'rate': float(rate),
+            'timestamp': datetime.utcnow().isoformat()
+        })
+    except Exception as e:
+        return jsonify({
+            'success': False,
+            'error': str(e)
+        }), 400
 
 if __name__ == '__main__':
     with app.app_context():

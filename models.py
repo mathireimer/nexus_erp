@@ -1,5 +1,6 @@
 from flask_sqlalchemy import SQLAlchemy
 from datetime import datetime
+from flask_login import UserMixin
 
 # Initialize SQLAlchemy
 db = SQLAlchemy()
@@ -20,20 +21,36 @@ vendor_tags = db.Table(
 )
 
 # Database Models
-class User(db.Model):
+class User(UserMixin, db.Model):
     id = db.Column(db.Integer, primary_key=True)
     username = db.Column(db.String(80), unique=True, nullable=False)
     password = db.Column(db.String(120), nullable=False)
 
 class Product(db.Model):
+    __tablename__ = 'products'
     id = db.Column(db.Integer, primary_key=True)
+    user_id = db.Column(db.Integer, db.ForeignKey('user.id'), nullable=False)
+    sku = db.Column(db.String(50), unique=True, nullable=False)
     name = db.Column(db.String(100), nullable=False)
-    quantity = db.Column(db.Integer, nullable=False)
-    price = db.Column(db.Float, nullable=False)
+    description = db.Column(db.Text)
+    category_id = db.Column(db.Integer, db.ForeignKey('category.id'), nullable=True)
+    unit = db.Column(db.String(20), nullable=False, default='piece')
+    purchase_price = db.Column(db.Float, nullable=False)
+    sell_price = db.Column(db.Float, nullable=False)
+    stock_qty = db.Column(db.Float, nullable=False, default=0)
+    min_stock = db.Column(db.Float, nullable=False, default=0)
+    tax_rate = db.Column(db.Float, default=0.0)
+    created_at = db.Column(db.DateTime, default=datetime.utcnow)
+    updated_at = db.Column(db.DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)
+
+    # Relationships
+    category = db.relationship('Category', backref='products')
+    stock_movements = db.relationship('StockMovement', backref='product', lazy=True)
+    inventory_adjustments = db.relationship('InventoryAdjustment', backref='product', lazy=True)
 
 class Order(db.Model):
     id = db.Column(db.Integer, primary_key=True)
-    product_id = db.Column(db.Integer, db.ForeignKey('product.id'), nullable=False)
+    product_id = db.Column(db.Integer, db.ForeignKey('products.id'), nullable=False)
     quantity = db.Column(db.Integer, nullable=False)
     status = db.Column(db.String(50), default='Pending')
 
@@ -50,7 +67,6 @@ class Client(db.Model):
     updated_at = db.Column(db.DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)
 
     # Relationships
-    invoices = db.relationship('Invoice', back_populates='client', lazy=True)
     tags = db.relationship('Tag', secondary=client_tag, backref='clients', lazy=True)
     contacts = db.relationship('Contact', backref='client', lazy=True)
 
@@ -67,7 +83,6 @@ class Vendor(db.Model):
     updated_at = db.Column(db.DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)
 
     # Relationships
-    invoices = db.relationship('Invoice', back_populates='vendor', lazy=True)
     tags = db.relationship('Tag', secondary='vendor_tags', backref='vendors', lazy=True)
     contacts = db.relationship('Contact', backref='vendor', lazy=True)
 
@@ -88,22 +103,75 @@ class Tag(db.Model):
     user_id = db.Column(db.Integer, db.ForeignKey('user.id'), nullable=False)
     name = db.Column(db.String(50), nullable=False)
 
-class Invoice(db.Model):
-    __tablename__ = 'invoice'
+class Bill(db.Model):
+    __tablename__ = 'bills'
     id = db.Column(db.Integer, primary_key=True)
+    user_id = db.Column(db.Integer, db.ForeignKey('user.id'), nullable=False)
     client_id = db.Column(db.Integer, db.ForeignKey('client.id'), nullable=False)
     vendor_id = db.Column(db.Integer, db.ForeignKey('vendors.id'), nullable=True)
-    invoice_number = db.Column(db.String(50), unique=True, nullable=False)
+    bill_number = db.Column(db.String(50), unique=True)
     issue_date = db.Column(db.Date, nullable=False)
     due_date = db.Column(db.Date, nullable=False)
-    total_amount = db.Column(db.Float, nullable=False)
+    total_amount = db.Column(db.Numeric(10, 2), nullable=False)
+    paid_amount = db.Column(db.Numeric(10, 2))
     currency = db.Column(db.String(3), default='PYG')
-    status = db.Column(db.String(20), default='Unpaid')  # Unpaid, Paid, Partially Paid
+    status = db.Column(db.String(20), default='Pending')  # Pending, Partially Paid, Paid
+    notes = db.Column(db.Text)
+    paid_date = db.Column(db.Date)
+    created_at = db.Column(db.DateTime, default=datetime.utcnow)
+    updated_at = db.Column(db.DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)
+
+    # Relationships
+    client = db.relationship('Client', backref='client_bills')
+    vendor = db.relationship('Vendor', backref='vendor_bills')
+    items = db.relationship('BillItem', backref='bill', cascade='all, delete-orphan')
+    payments = db.relationship('Payment', backref='bill', cascade='all, delete-orphan')
+
+    @property
+    def is_overdue(self):
+        return self.status != 'Paid' and self.due_date < datetime.now().date()
+
+    @property
+    def balance_due(self):
+        return self.total_amount - (self.paid_amount or 0)
+
+class BillItem(db.Model):
+    __tablename__ = 'bill_items'
+    id = db.Column(db.Integer, primary_key=True)
+    bill_id = db.Column(db.Integer, db.ForeignKey('bills.id'), nullable=False)
+    product_id = db.Column(db.Integer, db.ForeignKey('products.id'), nullable=False)
+    quantity = db.Column(db.Numeric(10, 2), nullable=False)
+    price = db.Column(db.Numeric(10, 2), nullable=False)
+    tax_rate = db.Column(db.Numeric(5, 2), default=0)
     created_at = db.Column(db.DateTime, default=datetime.utcnow)
 
     # Relationships
-    client = db.relationship('Client', back_populates='invoices')
-    vendor = db.relationship('Vendor', back_populates='invoices')
+    product = db.relationship('Product', backref='bill_items')
+
+    @property
+    def subtotal(self):
+        return self.quantity * self.price
+
+    @property
+    def tax_amount(self):
+        return self.subtotal * (self.tax_rate / 100)
+
+    @property
+    def total(self):
+        return self.subtotal + self.tax_amount
+
+class Payment(db.Model):
+    __tablename__ = 'payments'
+    id = db.Column(db.Integer, primary_key=True)
+    bill_id = db.Column(db.Integer, db.ForeignKey('bills.id'), nullable=False)
+    amount = db.Column(db.Numeric(10, 2), nullable=False)
+    original_amount = db.Column(db.Numeric(10, 2), nullable=True)
+    original_currency = db.Column(db.String(3), nullable=True)
+    payment_date = db.Column(db.Date, nullable=False)
+    payment_method = db.Column(db.String(50), nullable=False)
+    notes = db.Column(db.Text)
+    created_at = db.Column(db.DateTime, default=datetime.utcnow)
+    updated_at = db.Column(db.DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)
 
 class Category(db.Model):
     __tablename__ = 'category'
@@ -131,3 +199,22 @@ class Transaction(db.Model):
 
     # Relationships
     category = db.relationship('Category', backref='transactions')
+
+class StockMovement(db.Model):
+    __tablename__ = 'stock_movements'
+    id = db.Column(db.Integer, primary_key=True)
+    product_id = db.Column(db.Integer, db.ForeignKey('products.id'), nullable=False)
+    type = db.Column(db.String(20), nullable=False)  # purchase, sale, adjustment, return
+    quantity = db.Column(db.Float, nullable=False)
+    source_id = db.Column(db.Integer, nullable=True)  # Invoice ID, Adjustment ID, etc.
+    source_type = db.Column(db.String(50), nullable=True)  # "invoice", "adjustment", etc.
+    timestamp = db.Column(db.DateTime, default=datetime.utcnow)
+
+class InventoryAdjustment(db.Model):
+    __tablename__ = 'inventory_adjustments'
+    id = db.Column(db.Integer, primary_key=True)
+    product_id = db.Column(db.Integer, db.ForeignKey('products.id'), nullable=False)
+    quantity = db.Column(db.Float, nullable=False)
+    reason = db.Column(db.Text)
+    user_id = db.Column(db.Integer, db.ForeignKey('user.id'), nullable=False)
+    created_at = db.Column(db.DateTime, default=datetime.utcnow)

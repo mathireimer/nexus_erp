@@ -1,0 +1,496 @@
+{% extends "base.html" %}
+{% block content %}
+<div class="container">
+    <div class="row mb-4">
+        <div class="col">
+            <h2>Billing Management</h2>
+        </div>
+        <div class="col text-end">
+            <button type="button" class="btn btn-primary" data-bs-toggle="modal" data-bs-target="#createBillModal">
+                <i class="fas fa-plus me-2"></i>Create New Bill
+            </button>
+        </div>
+    </div>
+
+    <!-- Billing Summary Cards -->
+    <div class="row mb-4">
+        <div class="col-md-3">
+            <div class="card">
+                <div class="card-body">
+                    <div class="d-flex justify-content-between align-items-center">
+                        <div>
+                            <h6 class="text-muted mb-2">Total Outstanding</h6>
+                            <h3 class="mb-0">{{ "%.2f"|format(total_outstanding) }}</h3>
+                        </div>
+                        <div class="bg-warning bg-opacity-10 p-3 rounded">
+                            <i class="fas fa-clock text-warning"></i>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+        <div class="col-md-3">
+            <div class="card">
+                <div class="card-body">
+                    <div class="d-flex justify-content-between align-items-center">
+                        <div>
+                            <h6 class="text-muted mb-2">Overdue Bills</h6>
+                            <h3 class="mb-0">{{ overdue_count }}</h3>
+                        </div>
+                        <div class="bg-danger bg-opacity-10 p-3 rounded">
+                            <i class="fas fa-exclamation-circle text-danger"></i>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+        <div class="col-md-3">
+            <div class="card">
+                <div class="card-body">
+                    <div class="d-flex justify-content-between align-items-center">
+                        <div>
+                            <h6 class="text-muted mb-2">Paid This Month</h6>
+                            <h3 class="mb-0">{{ "%.2f"|format(paid_this_month) }}</h3>
+                        </div>
+                        <div class="bg-success bg-opacity-10 p-3 rounded">
+                            <i class="fas fa-check-circle text-success"></i>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+        <div class="col-md-3">
+            <div class="card">
+                <div class="card-body">
+                    <div class="d-flex justify-content-between align-items-center">
+                        <div>
+                            <h6 class="text-muted mb-2">Total Bills</h6>
+                            <h3 class="mb-0">{{ total_bills }}</h3>
+                        </div>
+                        <div class="bg-info bg-opacity-10 p-3 rounded">
+                            <i class="fas fa-file-invoice text-info"></i>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- Active Bills Section -->
+    <div class="card mb-4">
+        <div class="card-header d-flex justify-content-between align-items-center">
+            <h5 class="mb-0">Active Bills</h5>
+            <div class="btn-group">
+                <button type="button" class="btn btn-outline-secondary btn-sm" onclick="filterBills('all')">All</button>
+                <button type="button" class="btn btn-outline-warning btn-sm" onclick="filterBills('pending')">Pending</button>
+                <button type="button" class="btn btn-outline-danger btn-sm" onclick="filterBills('overdue')">Overdue</button>
+            </div>
+        </div>
+        <div class="card-body">
+            <div class="table-responsive">
+                <table class="table table-hover">
+                    <thead>
+                        <tr>
+                            <th>Bill Number</th>
+                            <th>Client</th>
+                            <th>Issue Date</th>
+                            <th>Due Date</th>
+                            <th>Amount</th>
+                            <th>Status</th>
+                            <th>Actions</th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                        {% for bill in active_bills %}
+                        <tr class="bill-row {{ 'table-danger' if bill.is_overdue else '' }}">
+                            <td>{{ bill.invoice_number }}</td>
+                            <td>
+                                <div>{{ bill.client.name if bill.client else 'Unknown Client' }}</div>
+                                <small class="text-muted">{{ bill.client.email if bill.client else '' }}</small>
+                            </td>
+                            <td>{{ bill.issue_date.strftime('%Y-%m-%d') }}</td>
+                            <td>{{ bill.due_date.strftime('%Y-%m-%d') }}</td>
+                            <td>
+                                <div>{{ bill.currency }} {{ "%.2f"|format(bill.total_amount) }}</div>
+                                {% if bill.status == 'Partially Paid' %}
+                                <small class="text-success">Paid: {{ bill.currency }} {{ "%.2f"|format(bill.paid_amount) }}</small>
+                                {% endif %}
+                            </td>
+                            <td>
+                                <span class="badge bg-{{ 'success' if bill.status == 'Paid' else 'warning' if bill.status == 'Partially Paid' else 'danger' if bill.is_overdue else 'secondary' }}">
+                                    {{ bill.status }}
+                                </span>
+                            </td>
+                            <td>
+                                <div class="btn-group">
+                                    <button type="button" class="btn btn-sm btn-outline-primary" onclick="viewBill({{ bill.id }})">
+                                        <i class="fas fa-eye"></i>
+                                    </button>
+                                    <button type="button" class="btn btn-sm btn-outline-success" onclick="recordPayment({{ bill.id }})">
+                                        <i class="fas fa-dollar-sign"></i>
+                                    </button>
+                                    <button type="button" class="btn btn-sm btn-outline-secondary" onclick="sendReminder({{ bill.id }})">
+                                        <i class="fas fa-envelope"></i>
+                                    </button>
+                                </div>
+                            </td>
+                        </tr>
+                        {% endfor %}
+                    </tbody>
+                </table>
+            </div>
+        </div>
+    </div>
+
+    <!-- Paid Bills Section -->
+    <div class="card">
+        <div class="card-header d-flex justify-content-between align-items-center">
+            <h5 class="mb-0">Paid Bills</h5>
+            <div class="input-group" style="width: 300px;">
+                <input type="text" class="form-control form-control-sm" id="paidBillsSearch" placeholder="Search bills...">
+                <button class="btn btn-outline-secondary btn-sm" type="button">
+                    <i class="fas fa-search"></i>
+                </button>
+            </div>
+        </div>
+        <div class="card-body">
+            <div class="table-responsive">
+                <table class="table">
+                    <thead>
+                        <tr>
+                            <th>Bill Number</th>
+                            <th>Client</th>
+                            <th>Issue Date</th>
+                            <th>Paid Date</th>
+                            <th>Amount</th>
+                            <th>Actions</th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                        {% for bill in paid_bills %}
+                        <tr>
+                            <td>{{ bill.invoice_number }}</td>
+                            <td>
+                                <div>{{ bill.client.name if bill.client else 'Unknown Client' }}</div>
+                                <small class="text-muted">{{ bill.client.email if bill.client else '' }}</small>
+                            </td>
+                            <td>{{ bill.issue_date.strftime('%Y-%m-%d') }}</td>
+                            <td>{{ bill.paid_date.strftime('%Y-%m-%d') }}</td>
+                            <td>{{ bill.currency }} {{ "%.2f"|format(bill.total_amount) }}</td>
+                            <td>
+                                <button type="button" class="btn btn-sm btn-outline-primary" onclick="viewBill({{ bill.id }})">
+                                    <i class="fas fa-eye"></i> View
+                                </button>
+                            </td>
+                        </tr>
+                        {% endfor %}
+                    </tbody>
+                </table>
+            </div>
+        </div>
+    </div>
+</div>
+
+<!-- Create Bill Modal -->
+<div class="modal fade" id="createBillModal" tabindex="-1">
+    <div class="modal-dialog modal-lg">
+        <div class="modal-content">
+            <div class="modal-header">
+                <h5 class="modal-title">Create New Bill</h5>
+                <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
+            </div>
+            <form id="createBillForm" action="{{ url_for('create_bill') }}" method="POST">
+                <div class="modal-body">
+                    <div class="row mb-3">
+                        <div class="col-md-6">
+                            <label for="client_id" class="form-label">Client</label>
+                            <select class="form-select" id="client_id" name="client_id" required>
+                                <option value="">Select a client...</option>
+                                {% for client in clients %}
+                                <option value="{{ client.id }}">{{ client.name }}</option>
+                                {% endfor %}
+                            </select>
+                        </div>
+                        <div class="col-md-6">
+                            <label for="currency" class="form-label">Currency</label>
+                            <select class="form-select" id="currency" name="currency" required>
+                                <option value="PYG">PYG - Paraguayan Guarani</option>
+                                <option value="USD">USD - US Dollar</option>
+                                <option value="EUR">EUR - Euro</option>
+                            </select>
+                        </div>
+                    </div>
+                    <div class="row mb-3">
+                        <div class="col-md-6">
+                            <label for="issue_date" class="form-label">Issue Date</label>
+                            <input type="date" class="form-control" id="issue_date" name="issue_date" required>
+                        </div>
+                        <div class="col-md-6">
+                            <label for="due_date" class="form-label">Due Date</label>
+                            <input type="date" class="form-control" id="due_date" name="due_date" required>
+                        </div>
+                    </div>
+                    <div class="mb-3">
+                        <label class="form-label">Items</label>
+                        <div id="billItems">
+                            <div class="row mb-2 bill-item">
+                                <div class="col-md-4">
+                                    <select class="form-select" name="items[0][product_id]" required>
+                                        <option value="">Select a product...</option>
+                                        {% for product in products %}
+                                        <option value="{{ product.id }}" data-price="{{ product.sell_price }}">{{ product.name }}</option>
+                                        {% endfor %}
+                                    </select>
+                                </div>
+                                <div class="col-md-2">
+                                    <input type="number" class="form-control" name="items[0][quantity]" placeholder="Qty" required>
+                                </div>
+                                <div class="col-md-3">
+                                    <input type="number" class="form-control" name="items[0][price]" placeholder="Price" required>
+                                </div>
+                                <div class="col-md-2">
+                                    <input type="number" class="form-control" name="items[0][tax]" placeholder="Tax %" value="0">
+                                </div>
+                                <div class="col-md-1">
+                                    <button type="button" class="btn btn-outline-danger" onclick="removeItem(this)">
+                                        <i class="fas fa-times"></i>
+                                    </button>
+                                </div>
+                            </div>
+                        </div>
+                        <button type="button" class="btn btn-outline-primary btn-sm mt-2" onclick="addItem()">
+                            <i class="fas fa-plus me-2"></i>Add Item
+                        </button>
+                    </div>
+                    <div class="row">
+                        <div class="col-md-6">
+                            <div class="mb-3">
+                                <label for="notes" class="form-label">Notes</label>
+                                <textarea class="form-control" id="notes" name="notes" rows="3"></textarea>
+                            </div>
+                        </div>
+                        <div class="col-md-6">
+                            <div class="card">
+                                <div class="card-body">
+                                    <h6 class="card-title">Summary</h6>
+                                    <div class="d-flex justify-content-between mb-2">
+                                        <span>Subtotal:</span>
+                                        <span id="subtotal">0.00</span>
+                                    </div>
+                                    <div class="d-flex justify-content-between mb-2">
+                                        <span>Tax:</span>
+                                        <span id="totalTax">0.00</span>
+                                    </div>
+                                    <div class="d-flex justify-content-between fw-bold">
+                                        <span>Total:</span>
+                                        <span id="total">0.00</span>
+                                    </div>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+                <div class="modal-footer">
+                    <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Cancel</button>
+                    <button type="submit" class="btn btn-primary">Create Bill</button>
+                </div>
+            </form>
+        </div>
+    </div>
+</div>
+
+<!-- Record Payment Modal -->
+<div class="modal fade" id="recordPaymentModal" tabindex="-1">
+    <div class="modal-dialog">
+        <div class="modal-content">
+            <div class="modal-header">
+                <h5 class="modal-title">Record Payment</h5>
+                <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
+            </div>
+            <form id="recordPaymentForm" action="{{ url_for('record_payment') }}" method="POST">
+                <div class="modal-body">
+                    <input type="hidden" id="payment_bill_id" name="bill_id">
+                    <div class="mb-3">
+                        <label for="payment_amount" class="form-label">Payment Amount</label>
+                        <input type="number" step="0.01" class="form-control" id="payment_amount" name="amount" required>
+                    </div>
+                    <div class="mb-3">
+                        <label for="payment_date" class="form-label">Payment Date</label>
+                        <input type="date" class="form-control" id="payment_date" name="payment_date" required>
+                    </div>
+                    <div class="mb-3">
+                        <label for="payment_method" class="form-label">Payment Method</label>
+                        <select class="form-select" id="payment_method" name="payment_method" required>
+                            <option value="CASH">Cash</option>
+                            <option value="BANK_TRANSFER">Bank Transfer</option>
+                            <option value="CREDIT_CARD">Credit Card</option>
+                            <option value="CHECK">Check</option>
+                        </select>
+                    </div>
+                    <div class="mb-3">
+                        <label for="payment_notes" class="form-label">Notes</label>
+                        <textarea class="form-control" id="payment_notes" name="notes" rows="2"></textarea>
+                    </div>
+                </div>
+                <div class="modal-footer">
+                    <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Cancel</button>
+                    <button type="submit" class="btn btn-success">Record Payment</button>
+                </div>
+            </form>
+        </div>
+    </div>
+</div>
+{% endblock %}
+
+{% block scripts %}
+<script>
+// Initialize date inputs with today's date
+document.addEventListener('DOMContentLoaded', function() {
+    const today = new Date().toISOString().split('T')[0];
+    document.getElementById('issue_date').value = today;
+    document.getElementById('payment_date').value = today;
+    
+    // Set due date to 30 days from today by default
+    const thirtyDaysFromNow = new Date();
+    thirtyDaysFromNow.setDate(thirtyDaysFromNow.getDate() + 30);
+    document.getElementById('due_date').value = thirtyDaysFromNow.toISOString().split('T')[0];
+});
+
+// Bill items management
+let itemCount = 1;
+
+function addItem() {
+    const template = `
+        <div class="row mb-2 bill-item">
+            <div class="col-md-4">
+                <select class="form-select" name="items[${itemCount}][product_id]" required>
+                    <option value="">Select a product...</option>
+                    {% for product in products %}
+                    <option value="{{ product.id }}" data-price="{{ product.sell_price }}">{{ product.name }}</option>
+                    {% endfor %}
+                </select>
+            </div>
+            <div class="col-md-2">
+                <input type="number" class="form-control" name="items[${itemCount}][quantity]" placeholder="Qty" required>
+            </div>
+            <div class="col-md-3">
+                <input type="number" class="form-control" name="items[${itemCount}][price]" placeholder="Price" required>
+            </div>
+            <div class="col-md-2">
+                <input type="number" class="form-control" name="items[${itemCount}][tax]" placeholder="Tax %" value="0">
+            </div>
+            <div class="col-md-1">
+                <button type="button" class="btn btn-outline-danger" onclick="removeItem(this)">
+                    <i class="fas fa-times"></i>
+                </button>
+            </div>
+        </div>
+    `;
+    document.getElementById('billItems').insertAdjacentHTML('beforeend', template);
+    itemCount++;
+    updateTotals();
+}
+
+function removeItem(button) {
+    button.closest('.bill-item').remove();
+    updateTotals();
+}
+
+function updateTotals() {
+    let subtotal = 0;
+    let totalTax = 0;
+    
+    document.querySelectorAll('.bill-item').forEach(item => {
+        const quantity = parseFloat(item.querySelector('input[name$="[quantity]"]').value) || 0;
+        const price = parseFloat(item.querySelector('input[name$="[price]"]').value) || 0;
+        const tax = parseFloat(item.querySelector('input[name$="[tax]"]').value) || 0;
+        
+        const itemSubtotal = quantity * price;
+        const itemTax = itemSubtotal * (tax / 100);
+        
+        subtotal += itemSubtotal;
+        totalTax += itemTax;
+    });
+    
+    const total = subtotal + totalTax;
+    
+    document.getElementById('subtotal').textContent = subtotal.toFixed(2);
+    document.getElementById('totalTax').textContent = totalTax.toFixed(2);
+    document.getElementById('total').textContent = total.toFixed(2);
+}
+
+// Auto-fill price when product is selected
+document.getElementById('billItems').addEventListener('change', function(e) {
+    if (e.target.matches('select[name$="[product_id]"]')) {
+        const selectedOption = e.target.options[e.target.selectedIndex];
+        const priceInput = e.target.closest('.row').querySelector('input[name$="[price]"]');
+        if (selectedOption.dataset.price) {
+            priceInput.value = selectedOption.dataset.price;
+        }
+        updateTotals();
+    }
+});
+
+// Update totals when quantity or price changes
+document.getElementById('billItems').addEventListener('input', function(e) {
+    if (e.target.matches('input[name$="[quantity]"]') || 
+        e.target.matches('input[name$="[price]"]') || 
+        e.target.matches('input[name$="[tax]"]')) {
+        updateTotals();
+    }
+});
+
+// Record payment modal
+function recordPayment(billId) {
+    document.getElementById('payment_bill_id').value = billId;
+    const modal = new bootstrap.Modal(document.getElementById('recordPaymentModal'));
+    modal.show();
+}
+
+// View bill details
+function viewBill(billId) {
+    // Implement view functionality
+    window.location.href = `/billing/${billId}`;
+}
+
+// Send payment reminder
+function sendReminder(billId) {
+    // Implement reminder functionality
+    fetch(`/billing/${billId}/send-reminder`, {
+        method: 'POST'
+    }).then(response => {
+        if (response.ok) {
+            alert('Payment reminder sent successfully!');
+        } else {
+            alert('Failed to send payment reminder.');
+        }
+    });
+}
+
+// Filter bills
+function filterBills(filter) {
+    const rows = document.querySelectorAll('.bill-row');
+    rows.forEach(row => {
+        if (filter === 'all') {
+            row.style.display = '';
+        } else if (filter === 'pending') {
+            const status = row.querySelector('.badge').textContent.trim();
+            row.style.display = status === 'Pending' ? '' : 'none';
+        } else if (filter === 'overdue') {
+            row.style.display = row.classList.contains('table-danger') ? '' : 'none';
+        }
+    });
+}
+
+// Search paid bills
+document.getElementById('paidBillsSearch').addEventListener('input', function(e) {
+    const searchTerm = e.target.value.toLowerCase();
+    const rows = document.querySelectorAll('table tbody tr');
+    
+    rows.forEach(row => {
+        const text = row.textContent.toLowerCase();
+        row.style.display = text.includes(searchTerm) ? '' : 'none';
+    });
+});
+</script>
+{% endblock %} 

@@ -1,0 +1,550 @@
+{% extends "base.html" %}
+{% block title %}Bills{% endblock %}
+{% block content %}
+<div class="container-fluid">
+    <div class="row mb-4">
+        <div class="col-12">
+            <div class="d-flex justify-content-between align-items-center">
+                <h2>Bills</h2>
+                <button type="button" class="btn btn-primary" data-bs-toggle="modal" data-bs-target="#createBillModal">
+                    <i class="fas fa-plus"></i> Create New Bill
+                </button>
+            </div>
+        </div>
+    </div>
+
+    <!-- Active Bills -->
+    <div class="row mb-4">
+        <div class="col-12">
+            <div class="card">
+                <div class="card-header">
+                    <h5 class="mb-0">Active Bills</h5>
+                </div>
+                <div class="card-body">
+                    <div class="table-responsive">
+                        <table class="table">
+                            <thead>
+                                <tr>
+                                    <th>Bill Number</th>
+                                    <th>Client</th>
+                                    <th>Issue Date</th>
+                                    <th>Due Date</th>
+                                    <th>Total Amount</th>
+                                    <th>Paid Amount</th>
+                                    <th>Balance Due</th>
+                                    <th>Status</th>
+                                    <th>Actions</th>
+                                </tr>
+                            </thead>
+                            <tbody>
+                                {% for bill in active_bills %}
+                                {% if bill.status == 'Unpaid' %}
+                                <tr>
+                                    <td>{{ bill.bill_number }}</td>
+                                    <td>{{ bill.client.name }}</td>
+                                    <td>{{ bill.issue_date.strftime('%Y-%m-%d') }}</td>
+                                    <td>{{ bill.due_date.strftime('%Y-%m-%d') }}</td>
+                                    <td>{{ "%.2f"|format(bill.total_amount) }} {{ bill.currency }}</td>
+                                    <td>{{ "%.2f"|format(bill.paid_amount or 0) }} {{ bill.currency }}</td>
+                                    <td>{{ "%.2f"|format(bill.total_amount - (bill.paid_amount or 0)) }} {{ bill.currency }}</td>
+                                    <td>
+                                        <span class="badge bg-danger">
+                                            {{ bill.status }}
+                                        </span>
+                                    </td>
+                                    <td>
+                                        <div class="btn-group">
+                                            <a href="{{ url_for('bill_detail', bill_id=bill.id) }}" class="btn btn-sm btn-info" title="View Details">
+                                                <i class="fas fa-eye"></i>
+                                            </a>
+                                            <button type="button" class="btn btn-sm btn-warning" data-bs-toggle="modal" 
+                                                    data-bs-target="#paymentModal{{ bill.id }}" title="Record Payment">
+                                                <i class="fas fa-money-bill"></i>
+                                            </button>
+                                            <button type="button" class="btn btn-sm btn-success" data-bs-toggle="modal" 
+                                                    data-bs-target="#fullPaymentModal{{ bill.id }}" title="Pay in Full">
+                                                <i class="fas fa-check-double"></i>
+                                            </button>
+                                        </div>
+                                    </td>
+                                </tr>
+                                {% endif %}
+                                {% endfor %}
+                            </tbody>
+                        </table>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- Partially Paid Bills -->
+    <div class="row mb-4">
+        <div class="col-12">
+            <div class="card">
+                <div class="card-header d-flex justify-content-between align-items-center">
+                    <h5 class="mb-0">Partially Paid Bills</h5>
+                    <span class="badge bg-warning" style="font-size: 1rem;">
+                        Total Pending: {{ partially_paid_total|format_currency }} PYG
+                    </span>
+                </div>
+                <div class="card-body">
+                    <div class="table-responsive">
+                        <table class="table">
+                            <thead>
+                                <tr>
+                                    <th>Bill Number</th>
+                                    <th>Client</th>
+                                    <th>Issue Date</th>
+                                    <th>Last Payment</th>
+                                    <th>Total Amount</th>
+                                    <th>Paid Amount</th>
+                                    <th>Balance Due</th>
+                                    <th>Progress</th>
+                                    <th>Actions</th>
+                                </tr>
+                            </thead>
+                            <tbody>
+                                {% for bill in active_bills %}
+                                {% if bill.status == 'Partially Paid' %}
+                                <tr>
+                                    <td>{{ bill.bill_number }}</td>
+                                    <td>{{ bill.client.name }}</td>
+                                    <td>{{ bill.issue_date.strftime('%Y-%m-%d') }}</td>
+                                    <td>
+                                        {% if bill.payments %}
+                                        {{ bill.payments[-1].payment_date.strftime('%Y-%m-%d') }}
+                                        {% else %}
+                                        N/A
+                                        {% endif %}
+                                    </td>
+                                    <td>{{ "%.2f"|format(bill.total_amount) }} {{ bill.currency }}</td>
+                                    <td>{{ "%.2f"|format(bill.paid_amount or 0) }} {{ bill.currency }}</td>
+                                    <td>{{ "%.2f"|format(bill.total_amount - (bill.paid_amount or 0)) }} {{ bill.currency }}</td>
+                                    <td>
+                                        {% set progress = ((bill.paid_amount or 0) / bill.total_amount * 100)|round|int %}
+                                        <div class="progress">
+                                            <div class="progress-bar bg-warning" role="progressbar" 
+                                                 style="width: {{ progress }}%"
+                                                 aria-valuenow="{{ progress }}" 
+                                                 aria-valuemin="0" 
+                                                 aria-valuemax="100">{{ progress }}%</div>
+                                        </div>
+                                    </td>
+                                    <td>
+                                        <div class="btn-group">
+                                            <a href="{{ url_for('bill_detail', bill_id=bill.id) }}" class="btn btn-sm btn-info" title="View Details">
+                                                <i class="fas fa-eye"></i>
+                                            </a>
+                                            <button type="button" class="btn btn-sm btn-warning" data-bs-toggle="modal" 
+                                                    data-bs-target="#paymentModal{{ bill.id }}" title="Record Payment">
+                                                <i class="fas fa-money-bill"></i>
+                                            </button>
+                                            <button type="button" class="btn btn-sm btn-success" data-bs-toggle="modal" 
+                                                    data-bs-target="#fullPaymentModal{{ bill.id }}" title="Pay in Full">
+                                                <i class="fas fa-check-double"></i>
+                                            </button>
+                                        </div>
+                                    </td>
+                                </tr>
+                                {% endif %}
+                                {% endfor %}
+                            </tbody>
+                        </table>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- Historic Bills -->
+    <div class="row">
+        <div class="col-12">
+            <div class="card">
+                <div class="card-header">
+                    <h5 class="mb-0">Historic Bills</h5>
+                </div>
+                <div class="card-body">
+                    <div class="table-responsive">
+                        <table class="table">
+                            <thead>
+                                <tr>
+                                    <th>Bill Number</th>
+                                    <th>Client</th>
+                                    <th>Issue Date</th>
+                                    <th>Paid Date</th>
+                                    <th>Total Amount</th>
+                                    <th>Status</th>
+                                    <th>Actions</th>
+                                </tr>
+                            </thead>
+                            <tbody>
+                                {% for bill in historic_bills %}
+                                <tr>
+                                    <td>{{ bill.bill_number }}</td>
+                                    <td>{{ bill.client.name }}</td>
+                                    <td>{{ bill.issue_date.strftime('%Y-%m-%d') }}</td>
+                                    <td>{{ bill.paid_date.strftime('%Y-%m-%d') if bill.paid_date else 'N/A' }}</td>
+                                    <td>{{ "%.2f"|format(bill.total_amount) }} {{ bill.currency }}</td>
+                                    <td>
+                                        <span class="badge bg-success">{{ bill.status }}</span>
+                                    </td>
+                                    <td>
+                                        <a href="{{ url_for('bill_detail', bill_id=bill.id) }}" class="btn btn-sm btn-info">
+                                            <i class="fas fa-eye"></i>
+                                        </a>
+                                    </td>
+                                </tr>
+                                {% endfor %}
+                            </tbody>
+                        </table>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+
+<!-- Create Bill Modal -->
+<div class="modal fade" id="createBillModal" tabindex="-1">
+    <div class="modal-dialog modal-lg">
+        <div class="modal-content">
+            <div class="modal-header">
+                <h5 class="modal-title">Create New Bill</h5>
+                <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
+            </div>
+            <div class="modal-body">
+                <form method="POST" action="{{ url_for('create_bill') }}" id="createBillForm">
+                    <div class="row mb-3">
+                        <div class="col-md-6">
+                            <label for="client_id" class="form-label">Client</label>
+                            <select class="form-select" id="client_id" name="client_id" required>
+                                <option value="">Select Client</option>
+                                {% for client in clients %}
+                                <option value="{{ client.id }}">{{ client.name }}</option>
+                                {% endfor %}
+                            </select>
+                        </div>
+                        <div class="col-md-6">
+                            <label for="currency" class="form-label">Currency</label>
+                            <select class="form-select" id="currency" name="currency" required>
+                                <option value="USD">USD</option>
+                                <option value="EUR">EUR</option>
+                                <option value="GBP">GBP</option>
+                            </select>
+                        </div>
+                    </div>
+                    <div class="row mb-3">
+                        <div class="col-md-6">
+                            <label for="issue_date" class="form-label">Issue Date</label>
+                            <input type="date" class="form-control" id="issue_date" name="issue_date" required>
+                        </div>
+                        <div class="col-md-6">
+                            <label for="due_date" class="form-label">Due Date</label>
+                            <input type="date" class="form-control" id="due_date" name="due_date" required>
+                        </div>
+                    </div>
+
+                    <!-- Bill Items -->
+                    <div class="mb-3">
+                        <div class="d-flex justify-content-between align-items-center mb-2">
+                            <h6 class="mb-0">Items</h6>
+                            <button type="button" class="btn btn-sm btn-success" id="addItemBtn">
+                                <i class="fas fa-plus"></i> Add Item
+                            </button>
+                        </div>
+                        <div id="itemsContainer">
+                            <!-- Items will be added here dynamically -->
+                        </div>
+                    </div>
+
+                    <!-- Totals -->
+                    <div class="row mb-3">
+                        <div class="col-md-4 offset-md-8">
+                            <div class="d-flex justify-content-between mb-2">
+                                <span>Subtotal:</span>
+                                <span id="subtotal">0.00</span>
+                            </div>
+                            <div class="d-flex justify-content-between mb-2">
+                                <span>Tax:</span>
+                                <span id="totalTax">0.00</span>
+                            </div>
+                            <div class="d-flex justify-content-between fw-bold">
+                                <span>Total:</span>
+                                <span id="total">0.00</span>
+                            </div>
+                        </div>
+                    </div>
+
+                    <div class="mb-3">
+                        <label for="notes" class="form-label">Notes</label>
+                        <textarea class="form-control" id="notes" name="notes" rows="3"></textarea>
+                    </div>
+                    <div class="text-end">
+                        <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Cancel</button>
+                        <button type="submit" class="btn btn-primary">Create Bill</button>
+                    </div>
+                </form>
+            </div>
+        </div>
+    </div>
+</div>
+
+<!-- Item Template (hidden) -->
+<template id="itemTemplate">
+    <div class="item-row border rounded p-3 mb-2">
+        <div class="row g-2">
+            <div class="col-md-4">
+                <label class="form-label">Product</label>
+                <select class="form-select product-select" name="items[][product_id]" required>
+                    <option value="">Select Product</option>
+                    {% for product in products %}
+                    <option value="{{ product.id }}" data-price="{{ product.price }}">{{ product.name }}</option>
+                    {% endfor %}
+                </select>
+            </div>
+            <div class="col-md-2">
+                <label class="form-label">Quantity</label>
+                <input type="number" class="form-control quantity-input" name="items[][quantity]" value="1" min="1" required>
+            </div>
+            <div class="col-md-2">
+                <label class="form-label">Price</label>
+                <input type="number" class="form-control price-input" name="items[][price]" step="0.01" required>
+            </div>
+            <div class="col-md-2">
+                <label class="form-label">Tax Rate %</label>
+                <input type="number" class="form-control tax-rate-input" name="items[][tax_rate]" value="0" min="0" max="100" step="0.01">
+            </div>
+            <div class="col-md-2">
+                <label class="form-label">Actions</label>
+                <button type="button" class="btn btn-danger w-100 remove-item">
+                    <i class="fas fa-trash"></i>
+                </button>
+            </div>
+        </div>
+    </div>
+</template>
+
+{% block scripts %}
+<script>
+document.addEventListener('DOMContentLoaded', function() {
+    const itemsContainer = document.getElementById('itemsContainer');
+    const itemTemplate = document.getElementById('itemTemplate');
+    const addItemBtn = document.getElementById('addItemBtn');
+    const subtotalSpan = document.getElementById('subtotal');
+    const totalTaxSpan = document.getElementById('totalTax');
+    const totalSpan = document.getElementById('total');
+
+    // Set today's date as default for issue_date
+    document.getElementById('issue_date').valueAsDate = new Date();
+    
+    // Set default due date (30 days from today)
+    const dueDate = new Date();
+    dueDate.setDate(dueDate.getDate() + 30);
+    document.getElementById('due_date').valueAsDate = dueDate;
+
+    function addItem() {
+        const clone = document.importNode(itemTemplate.content, true);
+        itemsContainer.appendChild(clone);
+
+        // Add event listeners to the new item
+        const newItem = itemsContainer.lastElementChild;
+        setupItemListeners(newItem);
+    }
+
+    function setupItemListeners(item) {
+        const productSelect = item.querySelector('.product-select');
+        const quantityInput = item.querySelector('.quantity-input');
+        const priceInput = item.querySelector('.price-input');
+        const taxRateInput = item.querySelector('.tax-rate-input');
+        const removeBtn = item.querySelector('.remove-item');
+
+        productSelect.addEventListener('change', function() {
+            const option = this.options[this.selectedIndex];
+            if (option.dataset.price) {
+                priceInput.value = option.dataset.price;
+            }
+            calculateTotals();
+        });
+
+        [quantityInput, priceInput, taxRateInput].forEach(input => {
+            input.addEventListener('input', calculateTotals);
+        });
+
+        removeBtn.addEventListener('click', function() {
+            item.remove();
+            calculateTotals();
+        });
+    }
+
+    function calculateTotals() {
+        let subtotal = 0;
+        let totalTax = 0;
+
+        itemsContainer.querySelectorAll('.item-row').forEach(item => {
+            const quantity = parseFloat(item.querySelector('.quantity-input').value) || 0;
+            const price = parseFloat(item.querySelector('.price-input').value) || 0;
+            const taxRate = parseFloat(item.querySelector('.tax-rate-input').value) || 0;
+
+            const itemSubtotal = quantity * price;
+            const itemTax = itemSubtotal * (taxRate / 100);
+
+            subtotal += itemSubtotal;
+            totalTax += itemTax;
+        });
+
+        const total = subtotal + totalTax;
+
+        subtotalSpan.textContent = subtotal.toFixed(2);
+        totalTaxSpan.textContent = totalTax.toFixed(2);
+        totalSpan.textContent = total.toFixed(2);
+    }
+
+    addItemBtn.addEventListener('click', addItem);
+
+    // Add first item row by default
+    addItem();
+
+    // Add currency conversion functionality
+    function setupCurrencyConversion(modalId) {
+        const modal = document.getElementById(modalId);
+        if (!modal) return;
+
+        const amountInput = modal.querySelector('input[name="payment_amount"]');
+        const currencySelect = modal.querySelector('select[name="payment_currency"]');
+        const conversionInfo = document.createElement('small');
+        conversionInfo.className = 'text-muted d-block mt-2';
+        amountInput.parentNode.appendChild(conversionInfo);
+
+        async function updateConversion() {
+            const amount = parseFloat(amountInput.value) || 0;
+            const currency = currencySelect.value;
+            const billCurrency = modal.querySelector('.bill-currency').textContent.trim();
+
+            if (amount && currency !== billCurrency) {
+                try {
+                    const response = await fetch(`/api/exchange-rate?from=${currency}&to=${billCurrency}`);
+                    const data = await response.json();
+                    if (data.success) {
+                        const converted = (amount * data.rate).toFixed(2);
+                        conversionInfo.textContent = `≈ ${converted} ${billCurrency}`;
+                        conversionInfo.style.color = '#28a745';  // Success green color
+                    } else {
+                        conversionInfo.textContent = 'Error fetching conversion rate';
+                        conversionInfo.style.color = '#dc3545';  // Danger red color
+                    }
+                } catch (error) {
+                    conversionInfo.textContent = 'Error fetching conversion rate';
+                    conversionInfo.style.color = '#dc3545';
+                }
+            } else {
+                conversionInfo.textContent = '';
+            }
+        }
+
+        amountInput.addEventListener('input', updateConversion);
+        currencySelect.addEventListener('change', updateConversion);
+    }
+
+    // Setup currency conversion for all payment modals
+    document.querySelectorAll('[id^="paymentModal"]').forEach(modal => {
+        setupCurrencyConversion(modal.id);
+    });
+});
+</script>
+{% endblock %}
+
+<!-- Payment Modals for Active Bills -->
+{% for bill in active_bills %}
+{% if bill.status != 'Paid' %}
+<!-- Partial Payment Modal -->
+<div class="modal fade" id="paymentModal{{ bill.id }}" tabindex="-1">
+    <div class="modal-dialog">
+        <div class="modal-content">
+            <div class="modal-header">
+                <h5 class="modal-title">Record Payment for Bill #{{ bill.bill_number }}</h5>
+                <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
+            </div>
+            <div class="modal-body">
+                <form method="POST" action="{{ url_for('mark_paid', bill_id=bill.id) }}">
+                    <div class="mb-3">
+                        <label class="form-label">Total Amount: {{ "%.2f"|format(bill.total_amount) }} <span class="bill-currency">{{ bill.currency }}</span></label><br>
+                        <label class="form-label">Already Paid: {{ "%.2f"|format(bill.paid_amount or 0) }} {{ bill.currency }}</label><br>
+                        <label class="form-label">Balance Due: {{ "%.2f"|format(bill.total_amount - (bill.paid_amount or 0)) }} {{ bill.currency }}</label>
+                    </div>
+                    <div class="mb-3">
+                        <label for="payment_amount{{ bill.id }}" class="form-label">Payment Amount</label>
+                        <input type="number" class="form-control" id="payment_amount{{ bill.id }}" name="payment_amount" 
+                               step="0.01" max="{{ bill.total_amount - (bill.paid_amount or 0) }}" required>
+                        <small class="text-muted">Maximum payment: {{ "%.2f"|format(bill.total_amount - (bill.paid_amount or 0)) }} {{ bill.currency }}</small>
+                    </div>
+                    <div class="mb-3">
+                        <label for="payment_currency{{ bill.id }}" class="form-label">Payment Currency</label>
+                        <select class="form-select" id="payment_currency{{ bill.id }}" name="payment_currency" required>
+                            <option value="PYG" {% if bill.currency == 'PYG' %}selected{% endif %}>PYG - Paraguayan Guarani</option>
+                            <option value="USD" {% if bill.currency == 'USD' %}selected{% endif %}>USD - US Dollar</option>
+                            <option value="EUR" {% if bill.currency == 'EUR' %}selected{% endif %}>EUR - Euro</option>
+                            <option value="GBP" {% if bill.currency == 'GBP' %}selected{% endif %}>GBP - British Pound</option>
+                        </select>
+                    </div>
+                    <div class="mb-3">
+                        <label for="payment_method{{ bill.id }}" class="form-label">Payment Method</label>
+                        <select class="form-select" id="payment_method{{ bill.id }}" name="payment_method" required>
+                            <option value="Cash">Cash</option>
+                            <option value="Bank Transfer">Bank Transfer</option>
+                            <option value="Credit Card">Credit Card</option>
+                            <option value="Check">Check</option>
+                        </select>
+                    </div>
+                    <div class="mb-3">
+                        <label for="payment_notes{{ bill.id }}" class="form-label">Notes</label>
+                        <textarea class="form-control" id="payment_notes{{ bill.id }}" name="notes" rows="2"></textarea>
+                    </div>
+                    <div class="text-end">
+                        <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Cancel</button>
+                        <button type="submit" class="btn btn-primary">Record Payment</button>
+                    </div>
+                </form>
+            </div>
+        </div>
+    </div>
+</div>
+
+<!-- Full Payment Modal -->
+<div class="modal fade" id="fullPaymentModal{{ bill.id }}" tabindex="-1">
+    <div class="modal-dialog">
+        <div class="modal-content">
+            <div class="modal-header">
+                <h5 class="modal-title">Pay Full Amount for Bill #{{ bill.bill_number }}</h5>
+                <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
+            </div>
+            <div class="modal-body">
+                <form method="POST" action="{{ url_for('mark_paid', bill_id=bill.id) }}">
+                    <input type="hidden" name="payment_amount" value="{{ bill.total_amount - (bill.paid_amount or 0) }}">
+                    <p>This will record a payment for the full remaining balance of:<br>
+                    <strong>{{ "%.2f"|format(bill.total_amount - (bill.paid_amount or 0)) }} {{ bill.currency }}</strong></p>
+                    <div class="mb-3">
+                        <label for="full_payment_method{{ bill.id }}" class="form-label">Payment Method</label>
+                        <select class="form-select" id="full_payment_method{{ bill.id }}" name="payment_method" required>
+                            <option value="Cash">Cash</option>
+                            <option value="Bank Transfer">Bank Transfer</option>
+                            <option value="Credit Card">Credit Card</option>
+                            <option value="Check">Check</option>
+                        </select>
+                    </div>
+                    <div class="mb-3">
+                        <label for="full_payment_notes{{ bill.id }}" class="form-label">Notes</label>
+                        <textarea class="form-control" id="full_payment_notes{{ bill.id }}" name="notes" rows="2"></textarea>
+                    </div>
+                    <div class="text-end">
+                        <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Cancel</button>
+                        <button type="submit" class="btn btn-success">Pay Full Amount</button>
+                    </div>
+                </form>
+            </div>
+        </div>
+    </div>
+</div>
+{% endif %}
+{% endfor %}
+{% endblock %} 
