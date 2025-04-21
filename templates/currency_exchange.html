@@ -1,0 +1,141 @@
+{% extends "base.html" %}
+
+{% block content %}
+<div class="container mt-4">
+    <h2>Currency Exchange Rates</h2>
+    <p class="text-muted">Real-time exchange rates compared to PYG (Paraguayan Guaraní)</p>
+    
+    <div class="row">
+        <div class="col-md-12">
+            <div class="card">
+                <div class="card-header d-flex justify-content-between align-items-center">
+                    <div>
+                        <h5 class="card-title mb-0">Current Exchange Rates</h5>
+                        <small class="text-muted">Last updated: <span id="last-updated">Loading...</span></small>
+                    </div>
+                    <button class="btn btn-primary btn-sm" onclick="updateRates()" id="refresh-btn">
+                        <i class="fas fa-sync-alt"></i> Refresh Rates
+                    </button>
+                </div>
+                <div class="card-body">
+                    <div class="table-responsive">
+                        <table class="table table-striped">
+                            <thead>
+                                <tr>
+                                    <th>Currency</th>
+                                    <th>Code</th>
+                                    <th>Rate (1 PYG = X)</th>
+                                    <th>Rate (1 X = PYG)</th>
+                                </tr>
+                            </thead>
+                            <tbody id="rates-table">
+                                <tr>
+                                    <td colspan="4" class="text-center">Loading rates...</td>
+                                </tr>
+                            </tbody>
+                        </table>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+
+<script>
+function updateRates() {
+    const refreshBtn = document.getElementById('refresh-btn');
+    refreshBtn.disabled = true;
+    refreshBtn.innerHTML = '<i class="fas fa-spinner fa-spin"></i> Updating...';
+    
+    fetch('/api/exchange-rate')
+        .then(response => {
+            if (!response.ok) {
+                throw new Error('Network response was not ok');
+            }
+            return response.json();
+        })
+        .then(data => {
+            if (data.error) {
+                throw new Error(data.error);
+            }
+            
+            const tableBody = document.getElementById('rates-table');
+            const lastUpdated = document.getElementById('last-updated');
+            
+            // Update last updated time with current time
+            const now = new Date();
+            lastUpdated.textContent = now.toLocaleString('en-GB', {
+                day: '2-digit',
+                month: '2-digit',
+                year: 'numeric',
+                hour: '2-digit',
+                minute: '2-digit',
+                second: '2-digit',
+                hour12: true
+            });
+            
+            // Clear existing rows
+            tableBody.innerHTML = '';
+            
+            // Sort currencies alphabetically
+            const sortedCurrencies = Object.entries(data.rates)
+                .sort(([codeA], [codeB]) => codeA.localeCompare(codeB));
+            
+            // Add rows for each currency
+            sortedCurrencies.forEach(([currency, rate]) => {
+                const row = document.createElement('tr');
+                const inverseRate = 1 / rate;
+                row.innerHTML = `
+                    <td>${getCurrencyName(currency)}</td>
+                    <td>${currency}</td>
+                    <td>${inverseRate.toFixed(8)}</td>
+                    <td>${rate.toLocaleString(undefined, {
+                        minimumFractionDigits: 2,
+                        maximumFractionDigits: 2
+                    })}</td>
+                `;
+                tableBody.appendChild(row);
+            });
+        })
+        .catch(error => {
+            console.error('Error fetching rates:', error);
+            document.getElementById('rates-table').innerHTML = `
+                <tr>
+                    <td colspan="4" class="text-center text-danger">
+                        <i class="fas fa-exclamation-circle"></i>
+                        Error loading exchange rates. Please try again later.
+                    </td>
+                </tr>
+            `;
+            document.getElementById('last-updated').textContent = 'Failed to update';
+        })
+        .finally(() => {
+            refreshBtn.disabled = false;
+            refreshBtn.innerHTML = '<i class="fas fa-sync-alt"></i> Refresh Rates';
+        });
+}
+
+function getCurrencyName(code) {
+    const currencyNames = {
+        'USD': 'US Dollar',
+        'EUR': 'Euro',
+        'BRL': 'Brazilian Real',
+        'ARS': 'Argentine Peso',
+        'CLP': 'Chilean Peso',
+        'UYU': 'Uruguayan Peso',
+        'BOB': 'Bolivian Boliviano',
+        'PEN': 'Peruvian Sol'
+    };
+    return currencyNames[code] || code;
+}
+
+// Update rates immediately and then every 1 minute
+updateRates();
+const autoUpdateInterval = setInterval(updateRates, 60 * 1000);
+
+// Clean up interval when page is unloaded
+window.addEventListener('unload', () => {
+    clearInterval(autoUpdateInterval);
+});
+</script>
+{% endblock %} 

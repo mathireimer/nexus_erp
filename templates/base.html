@@ -182,6 +182,9 @@
             <a class="nav-link {% if request.endpoint == 'cash_flow' %}active{% endif %}" href="{{ url_for('cash_flow') }}">
                 <i class="fas fa-chart-line"></i> Cash Flow
             </a>
+            <a class="nav-link {% if request.endpoint == 'currency_exchange' %}active{% endif %}" href="{{ url_for('currency_exchange') }}">
+                <i class="fas fa-exchange-alt"></i> Currency Exchange
+            </a>
             <a class="nav-link" href="{{ url_for('logout') }}">
                 <i class="fas fa-sign-out-alt"></i> Logout
             </a>

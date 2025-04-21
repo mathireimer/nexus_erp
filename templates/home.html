@@ -116,18 +116,58 @@
                 <p>Track your cash flow here</p>
             </a>
         </div>
+        <div class="col-md-3 mb-4">
+            <a href="{{ url_for('currency_exchange') }}" class="box-button">
+                <i class="fas fa-exchange-alt text-success"></i>
+                <h4>Currency Exchange</h4>
+                <p>View exchange rates here</p>
+            </a>
+        </div>
     </div>
 
-    <!-- Recent Transactions -->
     <div class="row mt-4">
-        <div class="col-12">
+        <!-- Currency Exchange Widget -->
+        <div class="col-md-6 mb-4">
+            <div class="card">
+                <div class="card-header d-flex justify-content-between align-items-center">
+                    <div>
+                        <h5 class="mb-0">Live Exchange Rates</h5>
+                        <small class="text-muted">Last updated: <span id="rates-last-updated">Loading...</span></small>
+                    </div>
+                    <a href="{{ url_for('currency_exchange') }}" class="btn btn-primary btn-sm">
+                        View All Rates
+                    </a>
+                </div>
+                <div class="card-body">
+                    <div class="table-responsive">
+                        <table class="table table-sm">
+                            <thead>
+                                <tr>
+                                    <th>Currency</th>
+                                    <th>Code</th>
+                                    <th>Rate (1 X = PYG)</th>
+                                </tr>
+                            </thead>
+                            <tbody id="dashboard-rates">
+                                <tr>
+                                    <td colspan="3" class="text-center">Loading rates...</td>
+                                </tr>
+                            </tbody>
+                        </table>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <!-- Recent Transactions -->
+        <div class="col-md-6 mb-4">
             <div class="card">
                 <div class="card-header">
                     <h5 class="mb-0">Recent Transactions</h5>
                 </div>
                 <div class="card-body">
                     <div class="table-responsive">
-                        <table class="table">
+                        <table class="table table-sm">
                             <thead>
                                 <tr>
                                     <th>Date</th>
@@ -157,4 +197,90 @@
         </div>
     </div>
 </div>
+
+<script>
+function updateDashboardRates() {
+    fetch('/api/exchange-rate')
+        .then(response => {
+            if (!response.ok) {
+                throw new Error('Network response was not ok');
+            }
+            return response.json();
+        })
+        .then(data => {
+            if (data.error) {
+                throw new Error(data.error);
+            }
+            
+            const tableBody = document.getElementById('dashboard-rates');
+            const lastUpdated = document.getElementById('rates-last-updated');
+            
+            // Update last updated time with current time
+            const now = new Date();
+            lastUpdated.textContent = now.toLocaleString('en-GB', {
+                day: '2-digit',
+                month: '2-digit',
+                year: 'numeric',
+                hour: '2-digit',
+                minute: '2-digit',
+                second: '2-digit',
+                hour12: true
+            });
+            
+            // Clear existing rows
+            tableBody.innerHTML = '';
+            
+            // Show only main currencies in dashboard
+            const mainCurrencies = ['USD', 'EUR', 'BRL', 'ARS'];
+            
+            // Add rows for main currencies
+            mainCurrencies.forEach(currency => {
+                if (data.rates[currency]) {
+                    const row = document.createElement('tr');
+                    const rate = data.rates[currency];
+                    row.innerHTML = `
+                        <td>${getCurrencyName(currency)}</td>
+                        <td>${currency}</td>
+                        <td>${rate.toLocaleString(undefined, {
+                            minimumFractionDigits: 2,
+                            maximumFractionDigits: 2
+                        })}</td>
+                    `;
+                    tableBody.appendChild(row);
+                }
+            });
+        })
+        .catch(error => {
+            console.error('Error fetching rates:', error);
+            document.getElementById('dashboard-rates').innerHTML = `
+                <tr>
+                    <td colspan="3" class="text-center text-danger">
+                        <i class="fas fa-exclamation-circle"></i>
+                        Error loading exchange rates
+                    </td>
+                </tr>
+            `;
+            document.getElementById('rates-last-updated').textContent = 'Failed to update';
+        });
+}
+
+function getCurrencyName(code) {
+    const currencyNames = {
+        'USD': 'US Dollar',
+        'EUR': 'Euro',
+        'BRL': 'Brazilian Real',
+        'ARS': 'Argentine Peso'
+    };
+    return currencyNames[code] || code;
+}
+
+// Update rates immediately and then every 1 minute
+updateDashboardRates();
+const dashboardRatesInterval = setInterval(updateDashboardRates, 60 * 1000);
+
+// Clean up interval when page is unloaded
+window.addEventListener('unload', () => {
+    clearInterval(dashboardRatesInterval);
+});
+</script>
 {% endblock %}

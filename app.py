@@ -17,7 +17,7 @@ app.secret_key = 'your_secret_key'
 # Configure SQLAlchemy
 app.config['SQLALCHEMY_DATABASE_URI'] = 'sqlite:///database.db'
 app.config['SQLALCHEMY_TRACK_MODIFICATIONS'] = False
-app.config['EXCHANGE_RATES_API_URL'] = 'https://api.exchangerate.host/latest'
+app.config['EXCHANGE_RATES_API_URL'] = 'https://open.er-api.com/v6/latest/PYG'
 
 # Initialize SQLAlchemy and Migrate
 db.init_app(app)
@@ -706,27 +706,44 @@ def bill_detail(bill_id):
     bill = Bill.query.filter_by(id=bill_id, user_id=current_user.id).first_or_404()
     return render_template('bill_detail.html', bill=bill)
 
+@app.route('/currency-exchange')
+@login_required
+def currency_exchange():
+    """Display the currency exchange rates page."""
+    return render_template('currency_exchange.html')
+
 @app.route('/api/exchange-rate', methods=['GET'])
 @login_required
 def get_current_rate():
-    """API endpoint to get current exchange rate"""
-    from_currency = request.args.get('from', 'USD')
-    to_currency = request.args.get('to', 'PYG')
-    
+    """Get current exchange rates from PYG to other currencies."""
     try:
-        rate = get_exchange_rate(from_currency, to_currency)
-        return jsonify({
-            'success': True,
-            'from': from_currency,
-            'to': to_currency,
-            'rate': float(rate),
-            'timestamp': datetime.utcnow().isoformat()
-        })
+        # Get rates from the API
+        response = requests.get(app.config['EXCHANGE_RATES_API_URL'])
+        
+        if response.status_code == 200:
+            data = response.json()
+            if data.get('result') == 'success':
+                rates = {}
+                base_rates = data['rates']
+                # Calculate inverse rates since we want PYG as base
+                for currency in ['USD', 'EUR', 'BRL', 'ARS', 'CLP', 'UYU', 'BOB', 'PEN']:
+                    if currency in base_rates:
+                        rates[currency] = 1 / base_rates[currency]
+                
+                return jsonify({
+                    'rates': rates,
+                    'timestamp': data['time_last_update_unix']
+                })
+            else:
+                app.logger.error(f"API Error: {data.get('error-type', 'Unknown error')}")
+                return jsonify({'error': 'Failed to fetch exchange rates'}), 500
+        else:
+            app.logger.error(f"HTTP Error: {response.status_code}")
+            return jsonify({'error': 'Failed to fetch exchange rates'}), 500
+            
     except Exception as e:
-        return jsonify({
-            'success': False,
-            'error': str(e)
-        }), 400
+        app.logger.error(f"Error fetching exchange rates: {str(e)}")
+        return jsonify({'error': 'Internal server error'}), 500
 
 if __name__ == '__main__':
     with app.app_context():
