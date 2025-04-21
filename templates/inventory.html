@@ -490,33 +490,57 @@ document.getElementById('productForm').addEventListener('submit', async (e) => {
 document.getElementById('adjustStockForm').addEventListener('submit', async (e) => {
     e.preventDefault();
     
-    const productId = document.getElementById('adjustProductId').value;
-    const formData = {
-        quantity: parseFloat(document.getElementById('adjustQuantity').value),
-        adjustment_type: document.getElementById('adjustmentType').value,
-        notes: document.getElementById('adjustmentNotes').value
-    };
-    
     try {
+        const productId = document.getElementById('adjustProductId').value;
+        if (!productId) {
+            throw new Error('No product ID found');
+        }
+
+        const quantity = document.getElementById('adjustQuantity').value;
+        const reason = document.getElementById('adjustReason').value;
+
+        if (!quantity) {
+            throw new Error('Quantity is required');
+        }
+        if (!reason) {
+            throw new Error('Reason is required');
+        }
+
+        const formData = {
+            quantity: parseFloat(quantity),
+            reason: reason
+        };
+
+        console.log('Adjusting stock with data:', {
+            productId,
+            formData
+        });
+        
         const response = await fetch(`/api/products/${productId}/adjust-stock`, {
             method: 'POST',
             headers: {
-                'Content-Type': 'application/json'
+                'Content-Type': 'application/json',
+                'Accept': 'application/json'
             },
             body: JSON.stringify(formData)
         });
         
         if (!response.ok) {
-            throw new Error('Failed to adjust stock');
+            const errorData = await response.json();
+            throw new Error(errorData.error || 'Failed to adjust stock');
         }
         
+        const result = await response.json();
+        console.log('Stock adjustment successful:', result);
+        
         window.modals.adjustStock.hide();
+        document.getElementById('adjustStockForm').reset();
         showToast('Success', 'Stock adjusted successfully');
-        loadProducts();
-        checkLowStock();
+        await loadProducts();
+        await checkLowStock();
     } catch (error) {
         console.error('Error adjusting stock:', error);
-        showToast('Error', 'Failed to adjust stock', true);
+        showToast('Error', error.message || 'Failed to adjust stock', true);
     }
 });
 

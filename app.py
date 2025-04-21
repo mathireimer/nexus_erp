@@ -1,5 +1,5 @@
 from flask import Flask, render_template, request, redirect, url_for, flash, session, jsonify
-from models import db, User, Client, Vendor, Contact, Tag, Product, Transaction, BillItem, Payment, Bill  # Import models here
+from models import db, User, Client, Vendor, Contact, Tag, Product, Transaction, BillItem, Payment, Bill, StockMovement  # Import models here
 from flask_migrate import Migrate
 from werkzeug.security import generate_password_hash, check_password_hash
 from datetime import datetime, timedelta
@@ -374,6 +374,17 @@ def create_bill():
             price = Decimal(prices[i])
             tax_rate = Decimal(tax_rates[i] or '0')
             
+            # Get the product
+            product = Product.query.get(product_ids[i])
+            if not product:
+                flash(f'Product with ID {product_ids[i]} not found', 'error')
+                return redirect(url_for('bills'))
+            
+            # Check stock availability
+            if product.stock_qty < float(quantity):
+                flash(f'Insufficient stock for {product.name}. Available: {product.stock_qty}', 'error')
+                return redirect(url_for('bills'))
+            
             item_subtotal = quantity * price
             item_tax = item_subtotal * (tax_rate / 100)
             
@@ -387,13 +398,31 @@ def create_bill():
                 price=price,
                 tax_rate=tax_rate
             ))
+            
+            # Update product stock
+            old_stock = product.stock_qty
+            product.stock_qty = product.stock_qty - float(quantity)
+            
+            # Create stock movement record
+            movement = StockMovement(
+                product_id=product.id,
+                quantity=-float(quantity),  # Negative for deduction
+                type='sale',
+                source_type='bill',
+                source_id=new_bill.id
+            )
+            db.session.add(movement)
     
     new_bill.total_amount = subtotal + total_tax
     
-    db.session.add(new_bill)
-    db.session.commit()
+    try:
+        db.session.add(new_bill)
+        db.session.commit()
+        flash('Bill created successfully!', 'success')
+    except Exception as e:
+        db.session.rollback()
+        flash(f'Error creating bill: {str(e)}', 'error')
     
-    flash('Bill created successfully!', 'success')
     return redirect(url_for('bills'))
 
 @app.route('/mark_paid/<int:bill_id>', methods=['POST'])

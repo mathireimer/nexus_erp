@@ -173,6 +173,9 @@
             <a class="nav-link {% if request.endpoint == 'inventory_page' %}active{% endif %}" href="{{ url_for('inventory_page') }}">
                 <i class="fas fa-boxes"></i> Inventory
             </a>
+            <a class="nav-link {% if request.endpoint == 'products' %}active{% endif %}" href="{{ url_for('products') }}">
+                <i class="fas fa-box"></i> Products
+            </a>
             <a class="nav-link {% if request.endpoint == 'bills' %}active{% endif %}" href="{{ url_for('bills') }}">
                 <i class="fas fa-file-invoice"></i> Bills
             </a>

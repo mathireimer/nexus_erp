@@ -214,7 +214,6 @@ class StockMovement(db.Model):
     source_id = db.Column(db.Integer, nullable=True)  # Bill ID, Adjustment ID, etc.
     source_type = db.Column(db.String(50), nullable=True)  # "bill", "adjustment", etc.
     timestamp = db.Column(db.DateTime, default=datetime.utcnow)
-    notes = db.Column(db.Text)
 
     def __repr__(self):
         return f'<StockMovement {self.type} {self.quantity} units>'
