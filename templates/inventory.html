@@ -270,23 +270,34 @@ function saveProduct() {
         },
         body: JSON.stringify(data)
     })
-    .then(response => response.json())
+    .then(response => {
+        if (!response.ok) {
+            return response.json().then(errorData => {
+                throw new Error(errorData.error || 'Failed to save product');
+            });
+        }
+        return response.json();
+    })
     .then(product => {
         products.push(product);
         updateProductsTable();
         updateStats();
-        $('#addProductModal').modal('hide');
+        const modal = bootstrap.Modal.getInstance(document.getElementById('addProductModal'));
+        modal.hide();
         form.reset();
+        // Show success message
+        alert('Product created successfully!');
     })
     .catch(error => {
         console.error('Error saving product:', error);
-        alert('Failed to save product. Please try again.');
+        alert(error.message || 'Failed to save product. Please try again.');
     });
 }
 
 function openStockAdjustment(productId) {
     document.getElementById('adjustProductId').value = productId;
-    $('#adjustStockModal').modal('show');
+    const modal = new bootstrap.Modal(document.getElementById('adjustStockModal'));
+    modal.show();
 }
 
 function saveStockAdjustment() {
@@ -305,7 +316,8 @@ function saveStockAdjustment() {
     .then(response => response.json())
     .then(() => {
         loadProducts();  // Reload all products to get updated quantities
-        $('#adjustStockModal').modal('hide');
+        const modal = bootstrap.Modal.getInstance(document.getElementById('adjustStockModal'));
+        modal.hide();
         form.reset();
     })
     .catch(error => {
