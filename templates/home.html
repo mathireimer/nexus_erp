@@ -203,7 +203,7 @@ function updateDashboardRates() {
     fetch('/api/exchange-rate')
         .then(response => {
             if (!response.ok) {
-                throw new Error('Network response was not ok');
+                throw new Error(`HTTP error! status: ${response.status}`);
             }
             return response.json();
         })
@@ -235,7 +235,7 @@ function updateDashboardRates() {
             
             // Add rows for main currencies
             mainCurrencies.forEach(currency => {
-                if (data.rates[currency]) {
+                if (data.rates && data.rates[currency]) {
                     const row = document.createElement('tr');
                     const rate = data.rates[currency];
                     row.innerHTML = `
@@ -256,7 +256,7 @@ function updateDashboardRates() {
                 <tr>
                     <td colspan="3" class="text-center text-danger">
                         <i class="fas fa-exclamation-circle"></i>
-                        Error loading exchange rates
+                        Error loading exchange rates: ${error.message}
                     </td>
                 </tr>
             `;
@@ -274,9 +274,9 @@ function getCurrencyName(code) {
     return currencyNames[code] || code;
 }
 
-// Update rates immediately and then every 1 minute
+// Update rates immediately and then every 5 minutes
 updateDashboardRates();
-const dashboardRatesInterval = setInterval(updateDashboardRates, 60 * 1000);
+const dashboardRatesInterval = setInterval(updateDashboardRates, 5 * 60 * 1000);
 
 // Clean up interval when page is unloaded
 window.addEventListener('unload', () => {

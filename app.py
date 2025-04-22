@@ -9,6 +9,9 @@ from flask_login import LoginManager, login_user, logout_user, login_required, c
 import requests
 from functools import lru_cache
 import logging
+from bs4 import BeautifulSoup
+import os
+import json
 
 # Initialize Flask app
 app = Flask(__name__)
@@ -497,7 +500,7 @@ def mark_paid(bill_id):
     except Exception as e:
         db.session.rollback()
         flash('Error recording payment. Please try again.', 'danger')
-        
+    
     return redirect(url_for('bills'))
 
 @app.route('/cash-flow')
@@ -715,35 +718,93 @@ def currency_exchange():
 @app.route('/api/exchange-rate', methods=['GET'])
 @login_required
 def get_current_rate():
-    """Get current exchange rates from PYG to other currencies."""
+    """Get current exchange rates from BCP website."""
     try:
-        # Get rates from the API
-        response = requests.get(app.config['EXCHANGE_RATES_API_URL'])
+        url = 'https://www.bcp.gov.py/webapps/web/cotizacion/monedas'
+        headers = {
+            'User-Agent': 'Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/91.0.4472.124 Safari/537.36'
+        }
+        response = requests.get(url, headers=headers, timeout=10)
         
-        if response.status_code == 200:
-            data = response.json()
-            if data.get('result') == 'success':
-                rates = {}
-                base_rates = data['rates']
-                # Calculate inverse rates since we want PYG as base
-                for currency in ['USD', 'EUR', 'BRL', 'ARS', 'CLP', 'UYU', 'BOB', 'PEN']:
-                    if currency in base_rates:
-                        rates[currency] = 1 / base_rates[currency]
-                
-                return jsonify({
-                    'rates': rates,
-                    'timestamp': data['time_last_update_unix']
-                })
-            else:
-                app.logger.error(f"API Error: {data.get('error-type', 'Unknown error')}")
-                return jsonify({'error': 'Failed to fetch exchange rates'}), 500
-        else:
-            app.logger.error(f"HTTP Error: {response.status_code}")
-            return jsonify({'error': 'Failed to fetch exchange rates'}), 500
+        # If we get a 403, use fallback rates
+        if response.status_code == 403:
+            app.logger.warning("Access to BCP website blocked. Using fallback rates.")
+            return {
+                'rates': {
+                    'USD': 7400.00,  # Updated to reflect sell rate
+                    'EUR': 8000.00,  # Updated to reflect sell rate
+                    'BRL': 1550.00,  # Updated to reflect sell rate
+                    'ARS': 9.00,     # Updated to reflect sell rate
+                },
+                'timestamp': int(datetime.now().timestamp()),
+                'source': 'fallback'
+            }
             
+        response.raise_for_status()
+        
+        soup = BeautifulSoup(response.text, 'html.parser')
+        
+        # Find the exchange rate table
+        table = soup.find('table', {'class': 'table'})
+        if not table:
+            app.logger.error("Exchange rate table not found on BCP website")
+            raise ValueError("Exchange rate table not found")
+            
+        rates = {}
+        # Process each row in the table
+        for row in table.find_all('tr')[1:]:  # Skip header row
+            columns = row.find_all('td')
+            if len(columns) >= 4:  # Ensure row has enough columns (including sell rate)
+                try:
+                    currency_name = columns[0].text.strip()
+                    currency_code = columns[1].text.strip()
+                    sell_rate_text = columns[3].text.strip().replace('.', '').replace(',', '.')  # Use column 3 for sell rate
+                    
+                    if currency_code and sell_rate_text:
+                        rate = float(sell_rate_text)
+                        rates[currency_code] = rate
+                        app.logger.info(f"Found sell rate for {currency_code}: {rate}")
+                except (ValueError, IndexError) as e:
+                    app.logger.warning(f"Error processing row: {e}")
+                    continue
+        
+        if not rates:
+            raise ValueError("No exchange rates found")
+            
+        app.logger.info(f"Successfully fetched {len(rates)} exchange rates")
+        return {
+            'rates': rates,
+            'timestamp': int(datetime.now().timestamp()),
+            'source': 'bcp'
+        }
+            
+    except requests.RequestException as e:
+        app.logger.error(f"Request error fetching exchange rates: {str(e)}")
+        # Return fallback rates on any request error
+        return {
+            'rates': {
+                'USD': 7400.00,  # Updated to reflect sell rate
+                'EUR': 8000.00,  # Updated to reflect sell rate
+                'BRL': 1550.00,  # Updated to reflect sell rate
+                'ARS': 9.00,     # Updated to reflect sell rate
+            },
+            'timestamp': int(datetime.now().timestamp()),
+            'source': 'fallback'
+        }
     except Exception as e:
-        app.logger.error(f"Error fetching exchange rates: {str(e)}")
-        return jsonify({'error': 'Internal server error'}), 500
+        app.logger.error(f"Error processing exchange rates: {str(e)}")
+        raise
+
+@app.route('/api/exchange-rates', methods=['GET'])
+@login_required
+def get_exchange_rates():
+    """API endpoint to get current exchange rates."""
+    try:
+        rates_data = get_current_rate()
+        return jsonify(rates_data)
+    except Exception as e:
+        app.logger.error(f"Error in exchange rates endpoint: {str(e)}")
+        return jsonify({'error': 'Failed to fetch exchange rates'}), 500
 
 if __name__ == '__main__':
     with app.app_context():

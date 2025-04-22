@@ -1,51 +1,104 @@
 {% extends "base.html" %}
+
 {% block content %}
-<h2>Clients</h2>
+<div class="container mt-4">
+    <div class="row mb-4">
+        <div class="col">
+            <h2>Clients</h2>
+        </div>
+        <div class="col text-end">
+            <button type="button" class="btn btn-primary" data-bs-toggle="modal" data-bs-target="#addClientModal">
+                Add New Client
+            </button>
+        </div>
+    </div>
 
-<!-- Create Client Form -->
-<h3>Create Client</h3>
-<form method="POST" action="{{ url_for('create_client') }}">
-    <div class="mb-3">
-        <label for="client-name" class="form-label">Name</label>
-        <input type="text" class="form-control" id="client-name" name="name" required>
+    <!-- Clients Table -->
+    <div class="table-responsive">
+        <table class="table table-striped table-hover">
+            <thead>
+                <tr>
+                    <th>Name</th>
+                    <th>Email</th>
+                    <th>Tax ID</th>
+                    <th>Payment Terms</th>
+                    <th>Actions</th>
+                </tr>
+            </thead>
+            <tbody>
+                {% for client in clients %}
+                <tr>
+                    <td>{{ client.name }}</td>
+                    <td>{{ client.email }}</td>
+                    <td>{{ client.tax_id }}</td>
+                    <td>{{ client.payment_terms }}</td>
+                    <td>
+                        <button class="btn btn-sm btn-outline-primary" onclick="editClient({{ client.id }})">
+                            Edit
+                        </button>
+                        <button class="btn btn-sm btn-outline-danger" onclick="deleteClient({{ client.id }})">
+                            Delete
+                        </button>
+                    </td>
+                </tr>
+                {% else %}
+                <tr>
+                    <td colspan="5" class="text-center">No clients found</td>
+                </tr>
+                {% endfor %}
+            </tbody>
+        </table>
     </div>
-    <div class="mb-3">
-        <label for="client-email" class="form-label">Email</label>
-        <input type="email" class="form-control" id="client-email" name="email" required>
-    </div>
-    <div class="mb-3">
-        <label for="client-tax-id" class="form-label">Tax ID</label>
-        <input type="text" class="form-control" id="client-tax-id" name="tax_id">
-    </div>
-    <div class="mb-3">
-        <label for="client-payment-terms" class="form-label">Payment Terms</label>
-        <input type="text" class="form-control" id="client-payment-terms" name="payment_terms">
-    </div>
-    <button type="submit" class="btn btn-primary">Create Client</button>
-</form>
 
-<!-- Clients Table -->
-<h3>Clients</h3>
-<table class="table">
-    <thead>
-        <tr>
-            <th>ID</th>
-            <th>Name</th>
-            <th>Email</th>
-            <th>Tax ID</th>
-            <th>Payment Terms</th>
-        </tr>
-    </thead>
-    <tbody>
-        {% for client in clients %}
-        <tr>
-            <td>{{ client.id }}</td>
-            <td>{{ client.name }}</td>
-            <td>{{ client.email }}</td>
-            <td>{{ client.tax_id or 'N/A' }}</td>
-            <td>{{ client.payment_terms or 'N/A' }}</td>
-        </tr>
-        {% endfor %}
-    </tbody>
-</table>
-{% endblock %}
+    <!-- Add Client Modal -->
+    <div class="modal fade" id="addClientModal" tabindex="-1" aria-labelledby="addClientModalLabel" aria-hidden="true">
+        <div class="modal-dialog">
+            <div class="modal-content">
+                <div class="modal-header">
+                    <h5 class="modal-title" id="addClientModalLabel">Add New Client</h5>
+                    <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
+                </div>
+                <form action="{{ url_for('create_client') }}" method="POST">
+                    <div class="modal-body">
+                        <div class="mb-3">
+                            <label for="name" class="form-label">Name</label>
+                            <input type="text" class="form-control" id="name" name="name" required>
+                        </div>
+                        <div class="mb-3">
+                            <label for="email" class="form-label">Email</label>
+                            <input type="email" class="form-control" id="email" name="email" required>
+                        </div>
+                        <div class="mb-3">
+                            <label for="tax_id" class="form-label">Tax ID</label>
+                            <input type="text" class="form-control" id="tax_id" name="tax_id">
+                        </div>
+                        <div class="mb-3">
+                            <label for="payment_terms" class="form-label">Payment Terms</label>
+                            <input type="text" class="form-control" id="payment_terms" name="payment_terms" 
+                                   placeholder="e.g., Net 30">
+                        </div>
+                    </div>
+                    <div class="modal-footer">
+                        <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Cancel</button>
+                        <button type="submit" class="btn btn-primary">Save Client</button>
+                    </div>
+                </form>
+            </div>
+        </div>
+    </div>
+</div>
+
+<!-- Client actions JavaScript -->
+<script>
+function editClient(clientId) {
+    // TODO: Implement edit functionality
+    alert('Edit functionality coming soon');
+}
+
+function deleteClient(clientId) {
+    if (confirm('Are you sure you want to delete this client?')) {
+        window.location.href = `/delete_client/${clientId}`;
+    }
+}
+</script>
+{% endblock %} 
