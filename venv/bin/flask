@@ -1,4 +1,4 @@
-#!/Users/macmini/Documents/erp_system/venv/bin/python3.13
+#!/Users/mathiasreimer/Documents/GitHub/nexus_erp/venv/bin/python3.13
 # -*- coding: utf-8 -*-
 import re
 import sys

@@ -33,7 +33,7 @@ end
 # Unset irrelevant variables.
 deactivate nondestructive
 
-set -gx VIRTUAL_ENV /Users/macmini/Documents/erp_system/venv
+set -gx VIRTUAL_ENV /Users/mathiasreimer/Documents/GitHub/nexus_erp/venv
 
 set -gx _OLD_VIRTUAL_PATH $PATH
 set -gx PATH "$VIRTUAL_ENV/"bin $PATH
