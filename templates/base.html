@@ -40,6 +40,9 @@
             <a class="nav-link {% if request.endpoint == 'bills' %}active{% endif %}" href="{{ url_for('bills') }}">
                 <i class="fas fa-file-invoice"></i> Bills
             </a>
+            <a class="nav-link {% if request.endpoint == 'purchase_invoices' %}active{% endif %}" href="{{ url_for('purchase_invoices') }}">
+                <i class="fas fa-file-invoice-dollar"></i> Purchase Invoices
+            </a>
             <a class="nav-link {% if request.endpoint == 'cash_flow' %}active{% endif %}" href="{{ url_for('cash_flow') }}">
                 <i class="fas fa-chart-line"></i> Cash Flow
             </a>

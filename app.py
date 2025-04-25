@@ -5,6 +5,7 @@ from werkzeug.security import generate_password_hash, check_password_hash
 from datetime import datetime, timedelta
 from decimal import Decimal
 from routes.inventory import inventory
+from routes.purchase_invoices import bp as purchase_invoices_bp
 from flask_login import LoginManager, login_user, logout_user, login_required, current_user
 import requests
 from functools import lru_cache
@@ -22,6 +23,9 @@ app.config['SQLALCHEMY_DATABASE_URI'] = 'sqlite:///database.db'
 app.config['SQLALCHEMY_TRACK_MODIFICATIONS'] = False
 app.config['EXCHANGE_RATES_API_URL'] = 'https://open.er-api.com/v6/latest/PYG'
 
+# Set the upload folder path
+app.config['UPLOAD_FOLDER'] = os.path.join(os.path.dirname(os.path.abspath(__file__)), 'uploads')
+
 # Initialize SQLAlchemy and Migrate
 db.init_app(app)
 migrate = Migrate(app, db)
@@ -33,6 +37,7 @@ login_manager.login_view = 'login'
 
 # Register blueprints
 app.register_blueprint(inventory)
+app.register_blueprint(purchase_invoices_bp, url_prefix='/api')
 
 # Custom template filters
 @app.template_filter('format_currency')
@@ -806,8 +811,26 @@ def get_exchange_rates():
         app.logger.error(f"Error in exchange rates endpoint: {str(e)}")
         return jsonify({'error': 'Failed to fetch exchange rates'}), 500
 
+@app.route('/purchase-invoices')
+@login_required
+def purchase_invoices():
+    vendors = Vendor.query.filter_by(user_id=current_user.id).all()
+    products = Product.query.filter_by(user_id=current_user.id).all()
+    
+    # Convert to dictionaries using to_dict methods
+    vendors_dict = [vendor.to_dict() for vendor in vendors]
+    products_dict = [product.to_dict() for product in products]
+    
+    return render_template('purchase_invoices.html', vendors=vendors_dict, products=products_dict)
+
 if __name__ == '__main__':
-    with app.app_context():
-        db.create_all()  # Create database tables
-    app.run(debug=True)
+    # Create upload directory if it doesn't exist
+    os.makedirs(app.config['UPLOAD_FOLDER'], exist_ok=True)
+    
+    # Run the app on all network interfaces
+    app.run(
+        host='0.0.0.0',  # Listen on all network interfaces
+        port=5000,       # Port number
+        debug=True       # Set to False in production
+    )
 

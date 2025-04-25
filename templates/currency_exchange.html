@@ -3,7 +3,7 @@
 {% block content %}
 <div class="container mt-4">
     <h2>Currency Exchange Rates</h2>
-    <p class="text-muted">Real-time exchange rates compared to PYG (Paraguayan Guaraní)</p>
+    <p class="text-primary">Real-time exchange rates compared to PYG (Paraguayan Guaraní)</p>
     
     <div class="row">
         <div class="col-md-12">
@@ -11,7 +11,7 @@
                 <div class="card-header d-flex justify-content-between align-items-center">
                     <div>
                         <h5 class="card-title mb-0">Current Exchange Rates</h5>
-                        <small class="text-muted">Last updated: <span id="last-updated">Loading...</span></small>
+                        <small class="text-white-60 mb-2">Last updated: <span id="last-updated">Loading...</span></small>
                     </div>
                     <button class="btn btn-primary btn-sm" onclick="updateRates()" id="refresh-btn">
                         <i class="fas fa-sync-alt"></i> Refresh Rates
@@ -19,13 +19,14 @@
                 </div>
                 <div class="card-body">
                     <div class="table-responsive">
-                        <table class="table table-striped">
-                            <thead>
+                        <table class="table table-dark table-sm">
+                            <thead class="border-secondary">
                                 <tr>
                                     <th>Currency</th>
                                     <th>Code</th>
-                                    <th>Rate (1 PYG = X)</th>
+                                    <th>Rate (X/USD)</th>
                                     <th>Rate (1 X = PYG)</th>
+        
                                 </tr>
                             </thead>
                             <tbody id="rates-table">
@@ -77,6 +78,9 @@ function updateRates() {
             // Clear existing rows
             tableBody.innerHTML = '';
             
+            // Get USD rate for relative calculations
+            const usdRate = data.rates['USD'] || 1;
+            
             // Sort currencies alphabetically
             const sortedCurrencies = Object.entries(data.rates)
                 .sort(([codeA], [codeB]) => codeA.localeCompare(codeB));
@@ -87,10 +91,15 @@ function updateRates() {
                 row.innerHTML = `
                     <td>${getCurrencyName(currency)}</td>
                     <td>${currency}</td>
+                    <td>${(usdRate/rate).toLocaleString(undefined, {
+                        minimumFractionDigits: 6,
+                        maximumFractionDigits: 6
+                    })}</td>
                     <td>${rate.toLocaleString(undefined, {
                         minimumFractionDigits: 2,
                         maximumFractionDigits: 2
                     })}</td>
+
                 `;
                 tableBody.appendChild(row);
             });
@@ -99,7 +108,7 @@ function updateRates() {
             console.error('Error fetching rates:', error);
             document.getElementById('rates-table').innerHTML = `
                 <tr>
-                    <td colspan="3" class="text-center text-danger">
+                    <td colspan="4" class="text-center text-danger">
                         <i class="fas fa-exclamation-circle"></i>
                         Error loading exchange rates: ${error.message}
                     </td>

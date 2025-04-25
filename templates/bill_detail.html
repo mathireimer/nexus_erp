@@ -53,8 +53,8 @@
 
                     <!-- Bill Items -->
                     <div class="table-responsive mb-4">
-                        <table class="table">
-                            <thead>
+                        <table class="table table-dark table-sm">
+                            <thead class="border-secondary">
                                 <tr>
                                     <th>Product</th>
                                     <th class="text-end">Quantity</th>
@@ -89,8 +89,8 @@
                     <div class="mb-4">
                         <h5>Payment History</h5>
                         <div class="table-responsive">
-                            <table class="table">
-                                <thead>
+                            <table class="table table-dark table-sm">
+                                <thead class="border-secondary">
                                     <tr>
                                         <th>Date</th>
                                         <th>Amount</th>
@@ -150,7 +150,7 @@
                         <input type="number" class="form-control" id="payment_amount" name="payment_amount" 
                                step="0.01" value="{{ bill.total_amount - (bill.paid_amount or 0) }}" 
                                max="{{ bill.total_amount - (bill.paid_amount or 0) }}" required>
-                        <small class="text-muted">Maximum payment: {{ bill.currency }} {{ "%.2f"|format(bill.total_amount - (bill.paid_amount or 0)) }}</small>
+                        <small class="text-white-60 mb-2">Maximum payment: {{ bill.currency }} {{ "%.2f"|format(bill.total_amount - (bill.paid_amount or 0)) }}</small>
                     </div>
                     <div class="mb-3">
                         <label for="payment_method" class="form-label">Payment Method</label>

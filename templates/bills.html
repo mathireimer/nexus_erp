@@ -22,8 +22,8 @@
                 </div>
                 <div class="card-body">
                     <div class="table-responsive">
-                        <table class="table">
-                            <thead>
+                        <table class="table table-dark table-sm">
+                            <thead class="border-secondary">
                                 <tr>
                                     <th>Bill Number</th>
                                     <th>Client</th>
@@ -90,8 +90,8 @@
                 </div>
                 <div class="card-body">
                     <div class="table-responsive">
-                        <table class="table">
-                            <thead>
+                        <table class="table table-dark table-sm">
+                            <thead class="border-secondary">
                                 <tr>
                                     <th>Bill Number</th>
                                     <th>Client</th>
@@ -115,7 +115,7 @@
                                         {% if bill.payments %}
                                         {{ bill.payments[-1].payment_date.strftime('%Y-%m-%d') }}
                                         {% else %}
-                                        N/A
+                                        <small class="text-white-50">N/A</small>
                                         {% endif %}
                                     </td>
                                     <td>{{ "%.2f"|format(bill.total_amount) }} {{ bill.currency }}</td>
@@ -166,8 +166,8 @@
                 </div>
                 <div class="card-body">
                     <div class="table-responsive">
-                        <table class="table">
-                            <thead>
+                        <table class="table table-dark table-sm">
+                            <thead class="border-secondary">
                                 <tr>
                                     <th>Bill Number</th>
                                     <th>Client</th>
@@ -604,7 +604,7 @@ function showToast(title, message, isError = false) {
                         <label for="payment_amount{{ bill.id }}" class="form-label">Payment Amount</label>
                         <input type="number" class="form-control" id="payment_amount{{ bill.id }}" name="payment_amount" 
                                step="0.01" max="{{ bill.total_amount - (bill.paid_amount or 0) }}" required>
-                        <small class="text-muted">Maximum payment: {{ "%.2f"|format(bill.total_amount - (bill.paid_amount or 0)) }} {{ bill.currency }}</small>
+                        <small class="text-white-50">Maximum payment: {{ "%.2f"|format(bill.total_amount - (bill.paid_amount or 0)) }} {{ bill.currency }}</small>
                     </div>
                     <div class="mb-3">
                         <label for="payment_currency{{ bill.id }}" class="form-label">Payment Currency</label>

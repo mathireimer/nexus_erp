@@ -53,6 +53,20 @@ class Product(db.Model):
     def __repr__(self):
         return f'<Product {self.name}>'
 
+    def to_dict(self):
+        return {
+            'id': self.id,
+            'name': self.name,
+            'description': self.description,
+            'sku': self.sku,
+            'category': self.category,
+            'unit': self.unit,
+            'purchase_price': float(self.purchase_price),
+            'sell_price': float(self.sell_price),
+            'stock_qty': float(self.stock_qty),
+            'tax_rate': float(self.tax_rate)
+        }
+
 class Order(db.Model):
     id = db.Column(db.Integer, primary_key=True)
     product_id = db.Column(db.Integer, db.ForeignKey('products.id'), nullable=False)
@@ -90,6 +104,16 @@ class Vendor(db.Model):
     # Relationships
     tags = db.relationship('Tag', secondary='vendor_tags', backref='vendors', lazy=True)
     contacts = db.relationship('Contact', backref='vendor', lazy=True)
+
+    def to_dict(self):
+        return {
+            'id': self.id,
+            'name': self.name,
+            'email': self.email,
+            'tax_id': self.tax_id,
+            'payment_terms': self.payment_terms,
+            'notes': self.notes
+        }
 
 class Contact(db.Model):
     __tablename__ = 'contacts'
@@ -130,7 +154,7 @@ class Bill(db.Model):
     client = db.relationship('Client', backref='client_bills')
     vendor = db.relationship('Vendor', backref='vendor_bills')
     items = db.relationship('BillItem', backref='parent_bill', cascade='all, delete-orphan')
-    payments = db.relationship('Payment', backref='bill', cascade='all, delete-orphan')
+    bill_payments = db.relationship('Payment', backref='related_bill', foreign_keys='Payment.bill_id', cascade='all, delete-orphan')
 
     @property
     def is_overdue(self):
@@ -168,7 +192,8 @@ class BillItem(db.Model):
 class Payment(db.Model):
     __tablename__ = 'payments'
     id = db.Column(db.Integer, primary_key=True)
-    bill_id = db.Column(db.Integer, db.ForeignKey('bills.id'), nullable=False)
+    bill_id = db.Column(db.Integer, db.ForeignKey('bills.id'), nullable=True)
+    purchase_invoice_id = db.Column(db.Integer, db.ForeignKey('purchase_invoices.id'), nullable=True)
     amount = db.Column(db.Numeric(10, 2), nullable=False)
     original_amount = db.Column(db.Numeric(10, 2), nullable=True)
     original_currency = db.Column(db.String(3), nullable=True)
@@ -177,6 +202,9 @@ class Payment(db.Model):
     notes = db.Column(db.Text)
     created_at = db.Column(db.DateTime, default=datetime.utcnow)
     updated_at = db.Column(db.DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)
+
+    # Relationships
+    related_purchase_invoice = db.relationship('PurchaseInvoice', backref='invoice_payments', foreign_keys=[purchase_invoice_id])
 
 class Category(db.Model):
     __tablename__ = 'category'
@@ -226,3 +254,54 @@ class InventoryAdjustment(db.Model):
     reason = db.Column(db.Text)
     user_id = db.Column(db.Integer, db.ForeignKey('user.id'), nullable=False)
     created_at = db.Column(db.DateTime, default=datetime.utcnow)
+
+class PurchaseInvoice(db.Model):
+    __tablename__ = 'purchase_invoices'
+    id = db.Column(db.Integer, primary_key=True)
+    user_id = db.Column(db.Integer, db.ForeignKey('user.id'), nullable=False)
+    invoice_number = db.Column(db.String(50), nullable=False)
+    date = db.Column(db.Date, nullable=False)
+    due_date = db.Column(db.Date, nullable=True)
+    vendor_id = db.Column(db.Integer, db.ForeignKey('vendors.id'), nullable=False)
+    total = db.Column(db.Numeric(12, 2), nullable=False)
+    status = db.Column(db.String(20), default='unpaid')  # 'paid', 'unpaid', 'partial'
+    notes = db.Column(db.Text)
+    attached_file = db.Column(db.String(255))  # URL to the uploaded file
+    created_at = db.Column(db.DateTime, default=datetime.utcnow)
+    updated_at = db.Column(db.DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)
+
+    # Relationships
+    vendor = db.relationship('Vendor', backref='purchase_invoices')
+    items = db.relationship('PurchaseInvoiceItem', backref='invoice', cascade='all, delete-orphan')
+
+    @property
+    def is_overdue(self):
+        return self.status != 'paid' and self.due_date and self.due_date < datetime.now().date()
+
+    @property
+    def balance_due(self):
+        paid_amount = sum(payment.amount for payment in self.invoice_payments)
+        return self.total - paid_amount
+
+class PurchaseInvoiceItem(db.Model):
+    __tablename__ = 'purchase_invoice_items'
+    id = db.Column(db.Integer, primary_key=True)
+    invoice_id = db.Column(db.Integer, db.ForeignKey('purchase_invoices.id'), nullable=False)
+    product_id = db.Column(db.Integer, db.ForeignKey('products.id'), nullable=True)
+    description = db.Column(db.Text, nullable=False)
+    quantity = db.Column(db.Numeric(10, 2), nullable=False)
+    unit_price = db.Column(db.Numeric(10, 2), nullable=False)
+    tax_rate = db.Column(db.Numeric(5, 2), default=0)
+    total = db.Column(db.Numeric(12, 2), nullable=False)
+    created_at = db.Column(db.DateTime, default=datetime.utcnow)
+
+    # Relationships
+    product = db.relationship('Product', backref='purchase_invoice_items')
+
+    @property
+    def subtotal(self):
+        return self.quantity * self.unit_price
+
+    @property
+    def tax_amount(self):
+        return self.subtotal * (self.tax_rate / 100)
